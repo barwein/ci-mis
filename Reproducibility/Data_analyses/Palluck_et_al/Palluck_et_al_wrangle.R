@@ -13,7 +13,7 @@ library(kableExtra)
 
 source("Reproducibility/Estimation_functions.R")
 
-library(CIwithMIS)
+library(MisspecifiedInterference)
 
 options(na.action = na.omit)
 # Read data

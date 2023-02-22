@@ -8,8 +8,8 @@ library(parallel)
 library(gtools)
 
 # install.packages("devtools")
-# devtools::install_github("barwein/Misspecified_Interference")
-library(Misspecified_Interference)
+devtools::install_github("barwein/Misspecified_Interference")
+library(MisspecifiedInterference)
 
 # Simulations -----------------------------------------------------------
 

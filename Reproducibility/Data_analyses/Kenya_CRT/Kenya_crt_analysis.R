@@ -14,7 +14,7 @@ library(ggtext)
 
 source("Reproducibility/Estimation_functions.R")
 
-library(CIwithMIS)
+library(MisspecifiedInterference)
 
 school.df <- fread("Reproducibility/Data_analyses/Kenya_CRT/imputed_data.csv")
 

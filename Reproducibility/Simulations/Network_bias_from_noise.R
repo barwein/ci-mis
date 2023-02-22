@@ -10,7 +10,7 @@
 
 source("Reproducibility/Estimation_functions.R")
 
-library(CIwithMIS)
+library(MisspecifiedInterference)
 
 
 # Parameters and init --------------------------------------------------------------
