@@ -40,10 +40,15 @@ generate_po <- function(exposures, base.noise = NULL){
   } else{
     y.00 <- base.noise
   }
-  Y <- 2*y.00*(exposures=="c11") +
-    1.25*y.00*(exposures=="c01") +
-    1.5*y.00*(exposures=="c10") +
-    1*y.00*(exposures=="c00")
+  # Y <- 2*y.00*(exposures=="c11") +
+  #   1.25*y.00*(exposures=="c01") +
+  #   1.5*y.00*(exposures=="c10") +
+  #   1*y.00*(exposures=="c00")
+
+  Y <- (y.00+1)*(exposures=="c11") +
+    (y.00+0.25)*(exposures=="c01") +
+    (y.00+0.5)*(exposures=="c10") +
+    y.00*(exposures=="c00")
 
   return(Y)
 }
@@ -121,42 +126,41 @@ compute_exposure_prob_analytical_ber <- function(A, p, threshold){
 
 }
 
-compute_joint_exposure_prob <- function(Pz_function, nv, R, A1, A2, p, threshold){
-
-  deg_A1 <- apply(A1, 1 , sum)
-  deg_A2 <- apply(A2, 1 , sum)
-
-  P_mat <- foreach(m = seq(R), .combine = "cbind") %dopar% {
-
-    source("Simulations/Testing/Aux_functions.R")
-
+compute_joint_exposure_prob <- function(Pz_function, nv, R, A.true, A.sp, p, threshold, exposures_vec){
+  
+  deg_A.true <- apply(A.true, 1 , sum)
+  deg_A.sp <- apply(A.sp, 1 , sum)
+  
+  n.exp <- length(exposures_vec)
+  
+  joint.count.mat <- as.data.frame(matrix(0,nrow = nv, ncol = n.exp^2))
+  
+  all.exposure.combination <- rbind(rep(exposures_vec,each=4),rep(exposures_vec,times=4))
+  names(joint.count.mat) <- apply(all.exposure.combination, 2, function(x){paste0(x[1],",",x[2])})
+  # Exposure format is (true.exp, sp.exp)
+  
+  for (m in seq(R)) {
+    # sample treatment vector
     z <- Pz_function(n=nv,p=p)
-
-    exposures_A1 <- generate_exposures_threshold(A = A1,
-                                                 Z = z,
-                                                 threshold = threshold,
-                                                 deg = deg_A1)
-    exposures_A2 <- generate_exposures_threshold(A = A2,
-                                                 Z = z,
-                                                 threshold = threshold,
-                                                 deg = deg_A2)
-
-    c11.e <- as.numeric(exposures_A1=="c11" & exposures_A2=="c11")
-    c01.e <- as.numeric(exposures_A1=="c01" & exposures_A2=="c01")
-    c10.e <- as.numeric(exposures_A1=="c10" & exposures_A2=="c10")
-    c00.e <- as.numeric(exposures_A1=="c00" & exposures_A2=="c00")
-
-    data.frame(c11.e, c01.e, c10.e, c00.e)
-
+    # Compute exposures
+    exposures_A.true <- generate_exposures_threshold(A = A.true,
+                                                     Z = z,
+                                                     threshold = threshold,
+                                                     deg = deg_A.true)
+    exposures_A.sp <- generate_exposures_threshold(A = A.sp,
+                                                   Z = z, 
+                                                   threshold = threshold,
+                                                   deg = deg_A.sp)
+    # update joint exposures counter 
+    for (i in seq(nv)){
+      joint.count.mat[i,paste0(exposures_A.true[i],",",exposures_A.sp[i])] <- 
+        joint.count.mat[i,paste0(exposures_A.true[i],",",exposures_A.sp[i])] + 1
+      
+    }
   }
-
-  p_11 <- (rowSums(P_mat[,seq(1,4*R,4)]) + 1) / (R+1)
-  p_01 <- (rowSums(P_mat[,seq(2,4*R+1,4)]) + 1) / (R+1)
-  p_10 <- (rowSums(P_mat[,seq(3,4*R+2,4)]) + 1) / (R+1)
-  p_00 <- (rowSums(P_mat[,seq(4,4*R+3,4)]) + 1) / (R+1)
-
-  return(list("p11" = p_11, "p01" = p_01,
-              "p10" = p_10, "p00" = p_00))
+  
+  # Return prob.mat (Nv*(n.exposures^2) dimension)
+  return((joint.count.mat + 1) / (R+1))
 }
 
 
@@ -268,9 +272,481 @@ n_joint_exposures <- function(expos_A, expos_obs){
 }
 
 
+exposures_under_network_list <- function(Z, A.list, threshold){
+  # for m adj. matrices in A.list and n units, this function compute the nXm matrix of exposures under
+  # each adj. matrix for treatment vector Z
+  return(
+    sapply(A.list, function(A){generate_exposures_threshold(A=A,Z=Z,threshold=threshold)})
+  )}
+
+
+specific_exposure_under_network_list <- function(exposures_mat, ck){
+  # for some exposures matrix, this function return a binary (1/0) vector
+  # of units that have exposure ck under all adj. matrics (rows in exposure_mat)
+  return(
+    apply(exposures_mat,1,function(x){as.numeric(all(x==ck))})
+  )}
+
+
+compute_prob_indicator <- function(R, n, Pz_function, pz_func_args, A.list, exposures_vec, threshold){
+  # A function that returns a list of nXr indicator matrices (one for each exposures),
+  # that indicate if unit i in sample r is exposed to some ck under all A \in A.list
+  # The output is used for computation of exposures probabilities
+  
+  
+  # Init a list of nXR indicator matrices 
+  Ind.mat.list <- vector("list",length(exposures_vec))
+  for (i in seq(length(exposures_vec))) {
+    assign(paste0("I.",exposures_vec[i]), matrix(NA, nrow = n, ncol = R))
+    Ind.mat.list[[i]] <- get(paste0("I.",exposures_vec[i]))
+  }
+  names(Ind.mat.list) <- exposures_vec
+  
+  # Sample Z ~ PZ R times and update the indicators matrices
+  for (r in seq(R)) {
+    # cur.Z <- Pz_function(n=n, p=pz)
+    cur.Z <- do.call(Pz_function, pz_func_args)
+    cur.exposure.mat <- exposures_under_network_list(Z=cur.Z,
+                                                     A.list=A.list,
+                                                     threshold=threshold)
+    for (ck in exposures_vec) {
+      # Update indic?tor matrices for each exposures and r
+      Ind.mat.list[[ck]][,r] <- specific_exposure_under_network_list(exposures_mat=cur.exposure.mat,
+                                                                     ck=ck)
+    }
+  }
+  return(Ind.mat.list)
+}
+
+
+compute_prob_matrices <- function(ind.mat.list, exposures_contrast, exposures_vec){
+  
+  # From the list of indicator matrices, vector of exposures and relevant contrast,
+  # the function return a list of all relevant probability matrices
+  
+  n <- nrow(ind.mat.list[[1]])
+  R <- ncol(ind.mat.list[[1]])
+  # Init list that will contain all relevant probability matrices
+  P_list <- vector(mode = "list", length = length(exposures_vec) + length(exposures_contrast))
+  
+  # Update P.k matrices
+  for (i in seq(length(exposures_vec))) {
+    ind.mat <- ind.mat.list[[exposures_vec[i]]]
+    # Use additive smoothing for the diagonal values
+    P_list[[i]] <- (ind.mat %*% t(ind.mat) + diag(1,n)) / (R+1) 
+  }
+  
+  if(length(exposures_contrast) > 0){
+    # Update P.kl matrices
+    for (j in seq(length(exposures_contrast))) {
+      ck <- exposures_contrast[[j]][1]
+      cl <- exposures_contrast[[j]][2]
+      ind.mat.k <- ind.mat.list[[ck]]
+      ind.mat.l <- ind.mat.list[[cl]]
+      P_list[[length(exposures_vec)+j]] <- (ind.mat.k %*% t(ind.mat.l)) / R
+    }
+  }
+  names(P_list) = c(exposures_vec,
+                    sapply(exposures_contrast, function(x){paste0(x[1],"-",x[2])}))
+  
+  return(P_list)
+}
+
+
+Get_prob_matrices_list <- function(R, n,
+                                   Pz_function,
+                                   pz_func_args,
+                                   A.list,
+                                   exposures_contrast, exposures_vec,
+                                   threshold,
+                                   Palluck.et.al = FALSE,
+                                   schid = NULL){
+  # Wrapper function that take as input all the adj. matrix list, R (number of iteration),
+  # exposures, exposures contrasts list, and Z sampler, 
+  # and comptute the list of probability matrices for the later use by MR estimator
+  
+  # First, get the indicator matrix list (list with length equal to exposures_vec,
+  #                                         one matrix for each exposure)
+  if(Palluck.et.al){
+    ind.mat.list <- compute_prob_indicator_palluck(R = R, n = n,
+                                                   Pz_function = Pz_function,
+                                                   pz_func_args = pz_func_args,
+                                                   # schid = schid,
+                                                   A.list = A.list,
+                                                   exposures_vec = exposures_vec)  
+  } else{
+    ind.mat.list <- compute_prob_indicator(R = R, n = n,
+                                           Pz_function = Pz_function,
+                                           pz_func_args = pz_func_args,
+                                           A.list = A.list,
+                                           exposures_vec = exposures_vec,
+                                           threshold = threshold)
+  }
+  
+  # Compute the relevant prob. matrices
+  Prob_matrices_list <- compute_prob_matrices(ind.mat.list = ind.mat.list,
+                                              exposures_contrast = exposures_contrast,
+                                              exposures_vec = exposures_vec)
+  
+  return(Prob_matrices_list)
+}
+
+
+
+compute_MR_PO_estimator <- function(Y.obs, expos.obs.mat, ck, P.k){
+  # Function that estimate the mean potential outcome using the MR estimator
+  
+  n <- length(Y.obs)
+  # Get indicator of exposure ck vector
+  ind.k <- specific_exposure_under_network_list(exposures_mat = expos.obs.mat, ck = ck)
+  
+  # Get probabilities from the diagonal of P.k
+  Pii <- diag(P.k)
+  
+  # Estimate using both HT and Hajek
+  
+  HT_esti <- (n^{-1})*(sum(ind.k*Y.obs/Pii))
+  
+  hajek_esti <- (sum(ind.k*Y.obs/Pii)) / (sum(ind.k/Pii))
+  
+  naive_esti <- sum(ind.k*Y.obs) / sum(ind.k)
+  
+  return(list(ht_esti = HT_esti, hajek_esti = hajek_esti, naive_esti = naive_esti))
+}
+
+compute_var_MR_PO_estimator <- function(Y.obs, expos.obs.mat, ck, P.k, estimate.n = FALSE){
+  # Function that compute the variance of the mean potential outcome  MR estimator
+  
+  n <- length(Y.obs)
+  # Get indicator of exposure ck vector
+  ind.k <- specific_exposure_under_network_list(exposures_mat = expos.obs.mat, ck = ck)
+  
+  # Get probabilities from the diagonal of P.k
+  Pii <- diag(P.k)
+  
+  # Whether to estimate n or use given n (HT vs Hajek)
+  n.hat <- ifelse(estimate.n,sum(ind.k/Pii),n)
+  
+  # First sum of the formula
+  sum.1 <- (n.hat^{-2})*(sum(ind.k*
+                               (1-Pii)*
+                               ((Y.obs/Pii)^2)
+  ))  
+  
+  sum.2 = 0; sum.3 = 0
+  
+  # Iteratively update second and third of the formula
+  for (i in seq(n)) {
+    for (j in setdiff(seq(n),i)){
+      if(P.k[i,j] != 0 & ind.k[i]*ind.k[j]==1){
+        # if(ind.k[i]*ind.k[j]==1){
+        cur.sum = ((P.k[i,j] - Pii[i]*Pii[j])/(P.k[i,j]))*
+          ((Y.obs[i]*Y.obs[j])/(Pii[i]*Pii[j]))
+        sum.2 = sum.2 + cur.sum
+      }
+      if(P.k[i,j] == 0){
+        cur.sum = (ind.k[i]*(Y.obs[i]^2)/(2*Pii[i])) +
+          (ind.k[j]*(Y.obs[j]^2)/(2*Pii[j]))
+        sum.3 = sum.3 + cur.sum
+      }
+    }  
+  }
+  # Scale the sums
+  sum.2 = (n.hat^{-2})*sum.2
+  sum.3 = (n.hat^{-2})*sum.3
+  # Return variance estimator
+  return(sum.1 + sum.2 + sum.3)
+}
+
+
+compute_cov_MR_PO_estimator <- function(Y.obs, expos.obs.mat, ck, cl,
+                                        P.k, P.l, P.kl,
+                                        estimate.n = FALSE){
+  
+  n <- length(Y.obs)
+  # Get indicator of exposure ck vector
+  ind.k <- specific_exposure_under_network_list(exposures_mat = expos.obs.mat, ck = ck)
+  ind.l <- specific_exposure_under_network_list(exposures_mat = expos.obs.mat, ck = cl)
+  
+  # Whether to estimate n or use given n (HT vs Hajek)
+  # n.hat <- ifelse(estimate.n,sum(ind.k/Pii),n)
+  n.hat <- n
+  
+  sum.1 = 0; sum.2 = 0
+  
+  for (i in seq(n)) {
+    for (j in seq(n)) {
+      if(P.kl[i,j] > 0 & ind.k[i]*ind.l[j] == 1 & i != j){
+        cur.sum = ((P.kl[i,j] - P.k[i,i]*P.l[j,j])/(P.kl[i,j]))*
+          ((Y.obs[i]*Y.obs[j])/(P.k[i,i]*P.l[j,j]))
+        sum.1 = sum.1 + cur.sum
+      }
+      if(P.kl[i,j] == 0){
+        cur.sum = (ind.k[i]*(Y.obs[i]^2)/(2*P.k[i,i])) +
+          (ind.l[j]*(Y.obs[j]^2)/(2*P.l[j,j])) 
+        sum.2 = sum.2 + cur.sum
+      }
+    }
+  }
+  sum.1 = (n.hat^{-2})*sum.1
+  sum.2 = (n.hat^{-2})*sum.2
+  
+  return(sum.1 - sum.2)
+}
+
+# NOTE that each prob. matrix only have to be computed ONCE! that will reduce running time!
+
+
+Hajek_residualized_Y <- function(Y.obs, ck, cl, expos.obs.mat, hajek_esti.ck, hajek_esti.cl){
+  # Get linear residualized values from Hajek estimator 
+  # only for units with exposure ck under all adj. matrix list.
+  ind.k <- specific_exposure_under_network_list(exposures_mat = expos.obs.mat, ck = ck)
+  ind.l <- specific_exposure_under_network_list(exposures_mat = expos.obs.mat, ck = cl)
+  y.resid <- ind.k*(Y.obs - hajek_esti.ck) + ind.l*(Y.obs - hajek_esti.cl) 
+  return(y.resid)
+}
+
+
+MR_CE_wrapper <- function(Y.obs, expos.obs.mat, ck, cl,
+                          P.k, P.l, P.kl, 
+                          estimate.n = FALSE,
+                          compute.variance = TRUE){
+  # Wrapper function that compute point estimate and variance of causal effect \tau(ck,cl)
+  
+  # Get point estimates using HT and Hajek
+  mu.ck <- compute_MR_PO_estimator(Y.obs = Y.obs,
+                                   expos.obs.mat = expos.obs.mat,
+                                   ck = ck,
+                                   P.k = P.k)
+  
+  mu.cl <- compute_MR_PO_estimator(Y.obs = Y.obs,
+                                   expos.obs.mat = expos.obs.mat,
+                                   ck = cl,
+                                   P.k = P.l)
+  
+  ht_ce <- mu.ck$ht_esti - mu.cl$ht_esti
+  hajek_ce <- mu.ck$hajek_esti - mu.cl$hajek_esti  
+  naive_diff_ce <- mu.ck$naive_esti - mu.cl$naive_esti
+  
+  if(compute.variance){
+    # Get variance estimator for HT
+    var.ht.ck <- compute_var_MR_PO_estimator(Y.obs = Y.obs,
+                                             expos.obs.mat = expos.obs.mat,
+                                             ck = ck,
+                                             P.k = P.k,
+                                             estimate.n = estimate.n)
+    
+    var.ht.cl <- compute_var_MR_PO_estimator(Y.obs = Y.obs,
+                                             expos.obs.mat = expos.obs.mat,
+                                             ck = cl,
+                                             P.k = P.l,
+                                             estimate.n = estimate.n)
+    
+    cov.ht.ckcl <- compute_cov_MR_PO_estimator(Y.obs = Y.obs,
+                                               expos.obs.mat = expos.obs.mat,
+                                               ck = ck,
+                                               cl = cl, 
+                                               P.k = P.k,
+                                               P.l = P.l,
+                                               P.kl = P.kl,
+                                               estimate.n = estimate.n)
+    
+    var_ht_ce <- var.ht.ck + var.ht.ck - 2*cov.ht.ckcl
+    
+    # Get variance estimator for Hajek
+    # First need to residualize Y.obs and then use mentioned variance estimator
+    Y.resid <- Hajek_residualized_Y(Y.obs = Y.obs,
+                                    ck = ck,
+                                    cl = cl, 
+                                    expos.obs.mat = expos.obs.mat,
+                                    hajek_esti.ck = mu.ck$hajek_esti,
+                                    hajek_esti.cl = mu.cl$hajek_esti)
+    
+    var.hajek.ck <- compute_var_MR_PO_estimator(Y.obs = Y.resid,
+                                                expos.obs.mat = expos.obs.mat,
+                                                ck = ck,
+                                                P.k = P.k,
+                                                estimate.n = estimate.n)
+    
+    var.hajek.cl <- compute_var_MR_PO_estimator(Y.obs = Y.resid,
+                                                expos.obs.mat = expos.obs.mat,
+                                                ck = cl,
+                                                P.k = P.l,
+                                                estimate.n = estimate.n)
+    
+    cov.hajek.ckcl <- compute_cov_MR_PO_estimator(Y.obs = Y.resid,
+                                                  expos.obs.mat = expos.obs.mat,
+                                                  ck = ck,
+                                                  cl = cl, 
+                                                  P.k = P.k,
+                                                  P.l = P.l,
+                                                  P.kl = P.kl,
+                                                  estimate.n = estimate.n)
+    
+    var_hajek_ce <- var.hajek.ck + var.hajek.cl - 2*cov.hajek.ckcl
+  }
+  if(!compute.variance){
+    var_ht_ce = var_hajek_ce = NA
+  }
+  # Return results
+  return(list(ht_ce = ht_ce, hajek_ce = hajek_ce,
+              naive_diff_ce = naive_diff_ce, 
+              var_ht_ce = var_ht_ce, var_hajek_ce = var_hajek_ce))
+}
+
+MR_CE_estimator <- function(Z.obs, Y.obs, A.list,
+                            exposures_contrast, exposures_vec,
+                            Prob_matrices_list,
+                            threshold,
+                            estimate.n = FALSE,
+                            compute.variance = TRUE){
+  
+  expos.obs.mat <- exposures_under_network_list(Z = Z.obs, A.list = A.list, threshold = threshold)
+  
+  ce.results <- vector("list", length(exposures_contrast))
+  names(ce.results) <- sapply(exposures_contrast, function(x){paste0(x[1],"-",x[2])})
+  
+  for (expos in exposures_contrast) {
+    ck <- expos[1]
+    cl <- expos[2]
+    cntrast_name <- paste0(ck,"-",cl)
+    P.k <- Prob_matrices_list[[ck]]
+    P.l <- Prob_matrices_list[[cl]]
+    P.kl <- Prob_matrices_list[[cntrast_name]]
+    ce_estimate <- MR_CE_wrapper(Y.obs = Y.obs,
+                                 expos.obs.mat = expos.obs.mat,
+                                 ck = ck,
+                                 cl = cl,
+                                 P.k = P.k,
+                                 P.l = P.l,
+                                 P.kl = P.kl,
+                                 estimate.n = estimate.n,
+                                 compute.variance = compute.variance)
+    ce.results[[cntrast_name]] <- ce_estimate
+  }
+  return(ce.results)
+}
+
+
+
 mod_rbind <- function(dt1, dt2){
   rbindlist(list(dt1,dt2))
 }
+
+
+Get_potential_outcomes_matrix <- function(threshold, base.noise=NULL){
+  if(is.null(base.noise)){
+    n <- length(exposures)
+    y.00 <- runif(n = n, min = 0.5, max = 1.5)
+  } else{
+    y.00 <- base.noise
+  }
+  
+  # Y <- as.data.frame(cbind(2*y.00, 1.25*y.00, 1.5*y.00, 1*y.00))
+  Y <- as.data.frame(cbind(y.00 + 1, y.00 + 0.25, y.00 + 0.5, y.00))
+  
+  names(Y) <- c("c11","c01","c10","c00")
+  
+  return(Y)
+}
+
+
+Get_bias_weight <- function(sp.exposure,
+                            A.sp.prob.vec,
+                            Joint.prob.mat,
+                            exposures_vec){
+  
+  relevant.cols <- paste0(exposures_vec,",",sp.exposure)
+  which.same.exposure <- which(exposures_vec==sp.exposure)
+  # Compute weight
+  q.mat <- Joint.prob.mat[,relevant.cols] / A.sp.prob.vec
+  # Adjust for j=k
+  q.mat[,which.same.exposure] <- q.mat[,which.same.exposure] - 1
+  
+  names(q.mat) <- exposures_vec
+  
+  return(q.mat)
+}
+
+Get_bias_bounds_probs <- function(noisy.prob.mat.list,
+                                   Joint.prob.mat,
+                                   exposures_vec){
+  cond.prob.list <- list("c11"=NA, "c01"=NA, "c10"=NA, "c00"=NA)
+  for (expos in exposures_vec) {
+    name.pasted <- paste0(expos,",",expos)
+    joint.prob <- Joint.prob.mat[,name.pasted]
+    marginal.sp.prob <- diag(noisy.prob.mat.list[[expos]])
+    cond.prob <- joint.prob/marginal.sp.prob
+    # Update list
+    cond.prob.list[expos] <- sum(1-cond.prob)  
+  }
+  return(cond.prob.list)
+}
+
+Get_bias_exact_and_bound <- function(noisy.prob.mat.list,
+                                     true_adj_mat,
+                                     noisy_adj_mat,
+                                     exposures_vec,
+                                     exposures_contrast, 
+                                     threshold,
+                                     base.po.noise,
+                                     Nv,
+                                     R,
+                                     pz,
+                                     kapa){
+  # Function that compute the HT estimator the exact bias and the bounds
+  
+  # Get joint exposures probabilities matrix  (A.true.exposure, A.sp.exposure)
+  Joint.prob.mat <- compute_joint_exposure_prob(Pz_function = Z_ber,
+                                                nv = Nv,
+                                                R = R,
+                                                A.true = true_adj_mat, 
+                                                A.sp = noisy_adj_mat,
+                                                p = pz,
+                                                threshold = threshold,
+                                                exposures_vec = exposures_vec)
+  # Get PO matrix
+  Y.mat <- Get_potential_outcomes_matrix(threshold = threshold,
+                                         base.noise = base.po.noise)
+  
+  # Get bounds weights
+  bounds.weight.list <- Get_bias_bounds_probs(noisy.prob.mat.list = noisy.prob.mat.list,
+                                              Joint.prob.mat = Joint.prob.mat,
+                                              exposures_vec = exposures_vec)
+  
+  n.contrast <- length(exposures_contrast)
+  # Results matrix
+  bias.mat <- data.frame(ce_contrast = sapply(exposures_contrast, function(x){paste0(x[1],"-",x[2])}),
+                         exact.bias = rep(NA, n.contrast),
+                         maximal.bias = rep(NA, n.contrast))
+  # Compute exact bias for each exposures contrast
+  for (nc in seq(n.contrast)){
+    cntrst <- exposures_contrast[[nc]]
+    expsr.l <- cntrst[1]; expsr.r <- cntrst[2];
+    
+    q.mat.l <- Get_bias_weight(sp.exposure = expsr.l,
+                               A.sp.prob.vec = diag(noisy.prob.mat.list[[expsr.l]]),
+                               Joint.prob.mat = Joint.prob.mat,
+                               exposures_vec = exposures_vec)
+    
+    q.mat.r <- Get_bias_weight(sp.exposure = expsr.r,
+                               A.sp.prob.vec = diag(noisy.prob.mat.list[[expsr.r]]),
+                               Joint.prob.mat = Joint.prob.mat,
+                               exposures_vec = exposures_vec)
+    
+    q.diff <- q.mat.l - q.mat.r
+    
+    # exact bias
+    bias.mat[nc,2] <- (Nv^{-1})*sum(q.diff*Y.mat)
+    # bounds of bias
+    bias.mat[nc,3] <- (2*kapa/Nv)*(bounds.weight.list[[expsr.l]]+bounds.weight.list[[expsr.r]])
+    
+  }
+  
+  # Return Bias(c_l,c_k; A^sp) and bounds of all causal contrasts
+  return(bias.mat)
+}
+
 
 One_network_CE_estimation <- function(true_adj_mat,
                                       noisy_adj_mat,
@@ -286,16 +762,19 @@ One_network_CE_estimation <- function(true_adj_mat,
                                       exposures_vec,
                                       exposures_contrast,
                                       base.po.noise = NULL,
-                                      jaccard_idx){
+                                      jaccard_idx,
+                                      compute.exact.bias = TRUE,
+                                      kapa = 1.5+1){
   # Get prob. matrices for current censored network
   prob.mat <- Get_prob_matrices_list(R = R, n = Nv,
                                      Pz_function = Z_ber, pz_func_args = list(n=Nv,p=pz),
                                      A.list = list(noisy_adj_mat),
                                      exposures_contrast = exposures_contrast,
                                      exposures_vec = exposures_vec,
-                                     exposure_func = generate_exposures_threshold,
-                                     # threshold = threshold)
-                                     exposure_func_args = list(threshold))
+                                     # exposure_func = generate_exposures_threshold,
+                                     threshold = threshold
+                                     # exposure_func_args = list(threshold)
+                                     )
   # Estimate CE M times
   sim_results <- mclapply(seq(M), function(m){
     # Sample treatment vector
@@ -334,36 +813,28 @@ One_network_CE_estimation <- function(true_adj_mat,
                       jac = jaccard_idx
     )]
 
-
-    # Estimate exposure prob. (using NOISY adj mat)
-    # expos_prob <- compute_exposure_prob(Pz_function = Z_ber,
-    #                                     nv = Nv,
-    #                                     R = R,
-    #                                     A = noisy_adj_mat,
-    #                                     p = pz,
-    #                                     threshold = threshold)
-    #
-    # expos_prob <- compute_exposure_prob_analytical_ber(A = noisy_adj_mat,
-    #                                                    p = pz,
-    #                                                    threshold = threshold)
-    # Estimate CE (using NOISY exposures)
-    # cur_ce <- estimate_ce(expos_vec = noisy_expos,
-    #                       P_expos = expos_prob,
-    #                       Y = true_outcomes)
-
-    # data.table(y_hat_ht = unlist(cur_ce[1:4]),
-    #            y_hat_hajek = unlist(cur_ce[5:8]),
-    #            exposure = c("c11","c01","c10","c00"),
-    #            exposure_prop_true = c(table(true_expos)/Nv),
-    #            exposure_prop_noisy = c(table(noisy_expos)/Nv),
-    #            n_expos_misclass = unlist(expos_misclass),
-    #            network_model = network_model,
-    #            param = paste0(param, collapse = ", "),
-    #            iter_ = m)
     CE_estimate
   },
   mc.cores = 1)
-  return(rbindlist(sim_results))
+  
+  sim.results.binded <- rbindlist(sim_results)
+  
+  if(compute.exact.bias){
+    exact.bias.mat <- Get_exact_bias(noisy.prob.mat.list = prob.mat,
+                                     true_adj_mat = true_adj_mat,
+                                     noisy_adj_mat = noisy_adj_mat,
+                                     exposures_vec = exposures_vec,
+                                     exposures_contrast = exposures_contrast,
+                                     threshold = threshold,
+                                     base.po.noise = base.po.noise,
+                                     Nv = Nv,
+                                     R = R, pz = pz,
+                                     kapa = kapa)
+    sim.results.binded[,exact.bias := rep(c(exact.bias.mat[,2]),times=M)]
+    sim.results.binded[,bounds.bias := rep(c(exact.bias.mat[,3]),times=M)]
+  }
+  
+  return(sim.results.binded)
 }
 
 Cluster_randomization_CE_estimation <- function(N_clusters,
@@ -541,7 +1012,8 @@ Bias_of_Noisy_Network_Simulation <- function(Nv,
                                              R,
                                              exposures_vec,
                                              exposures_contrast,
-                                             base.po.noise = NULL){
+                                             base.po.noise = NULL,
+                                             compute.exact.bias = TRUE){
   # Run the simulation
   full_results <- mclapply(beta_vec, function(beta){
 
@@ -572,7 +1044,8 @@ Bias_of_Noisy_Network_Simulation <- function(Nv,
                               exposures_vec = exposures_vec,
                               exposures_contrast = exposures_contrast,
                               base.po.noise = base.po.noise,
-                              jaccard_idx = jaccard_idx)
+                              jaccard_idx = jaccard_idx,
+                              compute.exact.bias = compute.exact.bias)
 
 
   },
@@ -595,7 +1068,8 @@ Bias_of_Censored_Network_Simulation <- function(Nv,
                                                 R,
                                                 exposures_vec,
                                                 exposures_contrast,
-                                                base.po.noise = NULL){
+                                                base.po.noise = NULL,
+                                                compute.exact.bias = TRUE){
   # Run the simulation
   full_results <- mclapply(K_vec, function(K){
 
@@ -624,7 +1098,8 @@ Bias_of_Censored_Network_Simulation <- function(Nv,
                               exposures_vec = exposures_vec,
                               exposures_contrast = exposures_contrast,
                               base.po.noise = base.po.noise,
-                              jaccard_idx = jaccard_idx)
+                              jaccard_idx = jaccard_idx,
+                              compute.exact.bias = compute.exact.bias)
 
 
   },

@@ -216,9 +216,9 @@ kable(jacc.df, format = "latex", booktabs = T, digits = 3)
 
 # Save networks data ------------------------------------------------------
 
-# saveRDS(list(ST.network = adj.matrix.either, ST.W2.network = adj.matrix.either.W2,
-#              BF.network = bf.adj.matrix.either, BF.W2.network = bf.adj.matrix.either.W2),
-#         "Simulations/data_analysis/Palluck_et_al/adj_matrix_data.RDS")
+saveRDS(list(ST.network = adj.matrix.either, ST.W2.network = adj.matrix.either.W2,
+             BF.network = bf.adj.matrix.either, BF.W2.network = bf.adj.matrix.either.W2),
+        "Reproducibility/Data_analyses/Palluck_et_al/adj_matrix_data.RDS")
 
 # Estimate prob. matrices -------------------------------------------------
 
