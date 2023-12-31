@@ -1,10 +1,8 @@
-##########
+###
 # Script that generate the graphic results of the bias simulation study
-##########
+###
 
 # Load libraries ----------------------------------------------------------
-
-
 
 library(data.table)
 library(ggplot2)
@@ -15,7 +13,7 @@ library(stringr)
 library(kableExtra)
 
 
-# Scenario I -----------------------------------------------------
+# Scenario I - Noise -----------------------------------------------------
 
 # Read data
 
@@ -29,14 +27,32 @@ PA.noise.results[,true_effect := rep(c(1,0.75,0.5,0.25,0.5),nrow(PA.noise.result
 
 PA.noise.melted <- melt.data.table(PA.noise.results,
                                      id.vars = c("ce_contrast","param","true_effect"),
-                                     measure.vars = c("ht_ce","hajek_ce"))
+                                     measure.vars = c("ht_ce","hajek_ce","naive_diff_ce",
+                                                      "exact.bias", "bounds.bias"))
 
-PA.noise.summarized <- PA.noise.melted[,.(mean_esti = abs(mean(100*(value-true_effect)/true_effect)),
-                                      perc025 = quantile(100*(value-true_effect)/true_effect,0.025),
-                                      perc975 = quantile(100*(value-true_effect)/true_effect,0.975),
-                                      sd.h = sd(100*(value-true_effect)/true_effect)),
-                                   by = c("ce_contrast","param","variable")]
+PA.noise.summarized.wo.exact <- PA.noise.melted[!variable %in% c("exact.bias","bounds.bias"),
+                                                .(mean_esti = abs(mean(value-true_effect)),
+                                                  # perc025 = quantile(100*(value-true_effect)/true_effect,0.025),
+                                                  # perc975 = quantile(100*(value-true_effect)/true_effect,0.975),
+                                                  sd.h = sd(value-true_effect)),
+                                               by = c("ce_contrast","param","variable")]
 
+PA.noise.summarized.w.exact <- PA.noise.melted[variable %in% c("exact.bias","bounds.bias"),
+                                                .(mean_esti = abs(mean(value)),
+                                                  # perc025 = quantile(100*(value-true_effect)/true_effect,0.025),
+                                                  # perc975 = quantile(100*(value-true_effect)/true_effect,0.975),
+                                                  sd.h = sd(value)),
+                                               by = c("ce_contrast","param","variable")]
+
+PA.noise.summarized <- rbindlist(list(PA.noise.summarized.wo.exact, PA.noise.summarized.w.exact))
+
+
+# PA.noise.summarized <- PA.noise.melted[,.(mean_esti = abs(mean(100*(value-true_effect)/true_effect)),
+#                                       perc025 = quantile(100*(value-true_effect)/true_effect,0.025),
+#                                       perc975 = quantile(100*(value-true_effect)/true_effect,0.975),
+#                                       sd.h = sd(100*(value-true_effect)/true_effect)),
+#                                    by = c("ce_contrast","param","variable")]
+# 
 
 PA.noise.plot.all <- ggplot(PA.noise.summarized, aes(x=factor(param),y=mean_esti, col = variable,
                                          group = variable, fill=variable)) +
@@ -51,7 +67,9 @@ PA.noise.plot.all <- ggplot(PA.noise.summarized, aes(x=factor(param),y=mean_esti
 
 # Main text plot
 
-PA.noise.plot.some <- ggplot(PA.noise.summarized[ce_contrast %in% c("c10-c00")],
+PA.noise.plot.some <- ggplot(PA.noise.summarized[variable %in% c("ht_ce","hajek_ce") & 
+                                                   # ce_contrast %in% c("c10-c00")],
+                                                   ce_contrast %in% c("c11-c00")],
                        aes(x = factor(param),
                            y = mean_esti,
                            color = variable,
@@ -67,8 +85,11 @@ PA.noise.plot.some <- ggplot(PA.noise.summarized[ce_contrast %in% c("c10-c00")],
   scale_shape_manual(values = c("ht_ce" = 16,"hajek_ce" = 18),
                      labels = c("HT","Hajek")) +
   geom_hline(yintercept = 0, lty = "dashed", linewidth = 1.1) +
-  scale_y_continuous(breaks = seq(0,20,5), limits = c(0,20)) +
-  labs(x=TeX("$\\eta$"), y = "Bias (%)", title = "(I)") +
+  # scale_y_continuous(breaks = seq(0,.1,0.025), limits = c(0,.1)) +
+  scale_y_continuous(breaks = seq(0,.3,0.05), limits = c(0,.3)) +
+  # scale_y_continuous(breaks = seq(0,20,5), limits = c(0,20)) +
+  # labs(x=TeX("$\\eta$"), y = "Bias (%)", title = "(I)") +
+  labs(x=TeX("$\\eta$"), y = "Abs. bias", title = "(I)") +
   # facet_wrap(~ce_contrast,nrow = 1,
   #            labeller = labeller(ce_contrast = c("c10-c00"="Direct effect"))) +
   guides(fill = guide_legend(override.aes = list(size = 12))) +
@@ -90,7 +111,16 @@ PA.noise.plot.some <- ggplot(PA.noise.summarized[ce_contrast %in% c("c10-c00")],
 
 # Appendix plots
 
-PA.noise.plot.apdx <- ggplot(PA.noise.summarized[!ce_contrast %in% c("c10-c00")],
+PA.noise.summarized$labels = factor(PA.noise.summarized$ce_contrast,
+                                    labels = c(TeX(r"($\tau(c_{\0\1}, c_{\0\0})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\0}, c_{\0\0})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\1}, c_{\0\0})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\1}, c_{\0\1})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\1}, c_{\1\0})$)",output = "character")))
+
+PA.noise.plot.apdx <- ggplot(PA.noise.summarized[!variable %in% c("naive_diff_ce","bounds.bias")
+                                                 ],
+                                                 # & !ce_contrast %in% c("c10-c00")],
                        aes(x = factor(param),
                            y = mean_esti,
                            color = variable,
@@ -98,17 +128,18 @@ PA.noise.plot.apdx <- ggplot(PA.noise.summarized[!ce_contrast %in% c("c10-c00")]
                            fill = variable,
                            shape = variable)) +
                   geom_line(linewidth = 1, alpha = 0.7, show.legend = F) +
-                  geom_point(size = 11) +
-                  scale_fill_manual(values = c("ht_ce" = "#990000","hajek_ce" = "#0065A9"),
-                                    labels = c("HT","Hajek")) +
-                  scale_color_manual(values = c("ht_ce" = "#990000","hajek_ce" = "#0065A9"),
-                                     labels = c("HT","Hajek")) +
-                  scale_shape_manual(values = c("ht_ce" = 16,"hajek_ce" = 18),
-                                     labels = c("HT","Hajek")) +
+                  geom_point(size = 7,alpha=0.6) + 
+                  scale_fill_manual(values = c("ht_ce" = "#990000","hajek_ce" = "#0065A9","exact.bias"="darkgreen"),
+                                    labels = c("HT","Hajek","Exact bias")) +
+                  scale_color_manual(values = c("ht_ce" = "#990000","hajek_ce" = "#0065A9","exact.bias"="darkgreen"),
+                                     labels = c("HT","Hajek","Exact bias")) +
+                  scale_shape_manual(values = c("ht_ce" = 16,"hajek_ce" = 18,"exact.bias"=17),
+                                     labels = c("HT","Hajek","Exact bias")) +
                   geom_hline(yintercept = 0, lty = "dashed", linewidth = 1.1) +
                   # scale_y_continuous(breaks = seq(0,20,5), limits = c(0,20)) +
-                  labs(x=TeX("$\\eta$"), y = "Bias (%)") +
-                  facet_wrap(~ce_contrast,nrow = 1) +
+                  # labs(x=TeX("$\\eta$"), y = "Bias (%)") +
+                  labs(x=TeX("$\\eta$"), y = "Abs. bias") +
+                  facet_wrap(~labels,nrow = 1, labeller = label_parsed, scales = "free_y") +
                   guides(fill = guide_legend(override.aes = list(size = 10))) +
                   theme_pubclean() +
                   theme(axis.text.x = element_text(size =20, face = "bold",angle=-90,hjust = 0.8),
@@ -125,6 +156,11 @@ PA.noise.plot.apdx <- ggplot(PA.noise.summarized[!ce_contrast %in% c("c10-c00")]
                         legend.key.size = unit(1.2,"cm"),
                         # plot.title = element_text(size = 34, face = "bold", hjust = .5, vjust = -0.5)
                         )
+
+ggsave(filename = "Reproducibility/Simulations/graphics/Appendix/APDX_PA_noise_bias_1000iter.jpeg",
+       plot = PA.noise.plot.apdx, 
+       width = 18, height = 10)
+
 
 # Number of misclassified exposures
 
@@ -160,6 +196,13 @@ PA_noise_n_miclass_mean <- PA.noise.results[ce_contrast=="c11-c00",
 expos.labels <- c("c11","c01","c10","c00")
 names(expos.labels) <- c("n.c11","n.c01","n.c10","n.c00")
 
+
+PA_noise_n_miclass_melted$labels = factor(PA_noise_n_miclass_melted$variable,
+                                          labels = c(TeX(r"($c_{\1\1}$)",output = "character"),
+                                                     TeX(r"($c_{\0\1}$)",output = "character"),
+                                                     TeX(r"($c_{\1\0}$)",output = "character"),
+                                                     TeX(r"($c_{\0\0}$)",output = "character")))
+
 PA.noise.n.misclass.plot <- ggplot(PA_noise_n_miclass_melted,
                              aes(x = factor(param),
                                  y = value,
@@ -170,8 +213,8 @@ PA.noise.n.misclass.plot <- ggplot(PA_noise_n_miclass_melted,
                              )) +
   geom_boxplot(fill="darkgrey", alpha = 0.7) +
   labs(x=TeX("$\\eta$"), y = "# Missclassified exposures") +
-  facet_wrap(~variable, nrow = 2,
-             labeller = labeller(variable=expos.labels)) +
+  facet_wrap(~labels, nrow = 2,
+             labeller = label_parsed) +
   # theme_pubclean() +
   theme_bw() +
   theme(axis.text.x = element_text(size =18, face = "bold"),
@@ -181,6 +224,9 @@ PA.noise.n.misclass.plot <- ggplot(PA_noise_n_miclass_melted,
         strip.background = element_blank(),
         strip.text = element_text(size=24, face = "bold"))
 
+ggsave(filename = "Reproducibility/Simulations/graphics/Appendix/APDX_PA_noise_n_missclassified_exposures.jpeg",
+       plot = PA.noise.n.misclass.plot, 
+       width = 18, height = 10)
 
 # HT and Hajek empirical SD
 
@@ -195,7 +241,14 @@ PA_noise_results.sd <- melt.data.table(PA_noise_results.sd,
                                 id.vars = c("ce_contrast","param"),
                                 measure.vars = c("sd.ht","sd.hajek"))
 
-PA.noise.sd.plot <- ggplot(PA_noise_results.sd[ce_contrast %in% c("c11-c00","c11-c10","c10-c00")],
+PA_noise_results.sd$labels = factor(PA_noise_results.sd$ce_contrast,
+                                    labels = c(TeX(r"($\tau(c_{\0\1}, c_{\0\0})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\0}, c_{\0\0})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\1}, c_{\0\0})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\1}, c_{\0\1})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\1}, c_{\1\0})$)",output = "character")))
+
+PA.noise.sd.plot <- ggplot(PA_noise_results.sd,
                      aes(x = factor(param),
                          y = value,
                          color = variable,
@@ -203,7 +256,7 @@ PA.noise.sd.plot <- ggplot(PA_noise_results.sd[ce_contrast %in% c("c11-c00","c11
                          fill = variable,
                          shape = variable)) +
   geom_line(linewidth = 1, alpha = 0.7, show.legend = F) +
-  geom_point(size = 10) +
+  geom_point(size = 7, alpha=0.6) +
   scale_fill_manual(values = c("sd.ht" = "#990000","sd.hajek" = "#0065A9"),
                     labels = c("HT","Hajek")) +
   scale_color_manual(values = c("sd.ht" = "#990000","sd.hajek" = "#0065A9"),
@@ -211,11 +264,11 @@ PA.noise.sd.plot <- ggplot(PA_noise_results.sd[ce_contrast %in% c("c11-c00","c11
   scale_shape_manual(values = c("sd.ht" = 16,"sd.hajek" = 18),
                      labels = c("HT","Hajek")) +
   # geom_hline(yintercept = 0, lty = "dashed", linewidth = 1.1) +
-  labs(x=TeX("$\\eta$"), y = "empirical SD (nominal)") +
+  labs(x=TeX("$\\eta$"), y = "Empirical SD") +
   # facet_wrap(~ce_contrast,nrow = 1,
   #            labeller = labeller(ce_contrast = c("c01-c00"="Indirect effect",
   #                                                "c11-c00"="Total effect"))) +
-  facet_wrap(~ce_contrast, nrow = 1) +
+  facet_wrap(~labels, nrow = 1, labeller = label_parsed) +
   guides(fill = guide_legend(override.aes = list(size = 10))) +
   # theme_pubclean() +
   theme_bw() +
@@ -231,6 +284,9 @@ PA.noise.sd.plot <- ggplot(PA_noise_results.sd[ce_contrast %in% c("c11-c00","c11
         legend.text = element_text(size = 20, face = "bold"),
         legend.key.size = unit(1.2,"cm"))
 
+ggsave(filename = "Reproducibility/Simulations/graphics/Appendix/APDX_PA_noise_SD_plot.jpeg",
+       plot = PA.noise.sd.plot, 
+       width = 18, height = 10)
 
 # Network similarity with Jaccard index
 
@@ -255,14 +311,28 @@ PA.censor.results[,true_effect := rep(c(1,0.75,0.5,0.25,0.5),nrow(PA.censor.resu
 
 PA.censor.melted <- melt.data.table(PA.censor.results,
                                    id.vars = c("ce_contrast","param","true_effect"),
-                                   measure.vars = c("ht_ce","hajek_ce"))
+                                   measure.vars = c("ht_ce","hajek_ce","naive_diff_ce",
+                                                    "exact.bias","bounds.bias"))
 
-PA.censor.summarized <- PA.censor.melted[,.(mean_esti = abs(mean(100*(value-true_effect)/true_effect)),
-                                          perc025 = quantile(100*(value-true_effect)/true_effect,0.025),
-                                          perc975 = quantile(100*(value-true_effect)/true_effect,0.975),
-                                          sd.h = sd(100*(value-true_effect)/true_effect)),
+PA.censor.summarized.wo.exact <- PA.censor.melted[!variable %in% c("exact.bias","bounds.bias")
+                                          ,.(mean_esti = abs(mean(value-true_effect)),
+                                             sd.h = sd(value-true_effect)),
                                        by = c("ce_contrast","param","variable")]
 
+PA.censor.summarized.w.exact <- PA.censor.melted[variable %in% c("exact.bias","bounds.bias")
+                                          ,.(mean_esti = abs(mean(value)),
+                                             sd.h = sd(value)),
+                                       by = c("ce_contrast","param","variable")]
+
+PA.censor.summarized <- rbindlist(list(PA.censor.summarized.wo.exact, PA.censor.summarized.w.exact))
+
+
+# PA.censor.summarized <- PA.censor.melted[,.(mean_esti = abs(mean(100*(value-true_effect)/true_effect)),
+#                                           perc025 = quantile(100*(value-true_effect)/true_effect,0.025),
+#                                           perc975 = quantile(100*(value-true_effect)/true_effect,0.975),
+#                                           sd.h = sd(100*(value-true_effect)/true_effect)),
+#                                        by = c("ce_contrast","param","variable")]
+# 
 
 PA.censor.plot.all <- ggplot(PA.censor.summarized, aes(x=factor(param,levels = as.character(seq(7,1))),
                                                        y=mean_esti, col = variable,
@@ -278,7 +348,8 @@ PA.censor.plot.all <- ggplot(PA.censor.summarized, aes(x=factor(param,levels = a
 
 # Main text plot
 
-PA.censor.plot.some <- ggplot(PA.censor.summarized[ce_contrast %in% c("c10-c00")],
+PA.censor.plot.some <- ggplot(PA.censor.summarized[variable %in% c("ht_ce","hajek_ce") & 
+                                                     ce_contrast %in% c("c10-c00")],
                              aes(x = factor(param,levels = as.character(seq(7,1))),
                                  y = mean_esti,
                                  color = variable,
@@ -294,19 +365,22 @@ PA.censor.plot.some <- ggplot(PA.censor.summarized[ce_contrast %in% c("c10-c00")
   scale_shape_manual(values = c("ht_ce" = 16,"hajek_ce" = 18),
                      labels = c("HT","Hajek")) +
   geom_hline(yintercept = 0, lty = "dashed", linewidth = 1.1) +
-  scale_y_continuous(breaks = seq(0,20,5), limits = c(0,20)) +
-  labs(x="K", y = "Bias (%)", title = "(II)") +
+  scale_y_continuous(breaks = seq(0,.1,0.025), limits = c(0,.1)) +
+  # scale_y_continuous(breaks = seq(0,20,5), limits = c(0,20)) +
+  # labs(x="K", y = "Bias (%)", title = "(II)") +
+  labs(x="K", y = "Abs. bias", title = "(II)") +
   # facet_wrap(~ce_contrast,nrow = 1,
   #            labeller = labeller(ce_contrast = c("c10-c00"="Direct effect"))) +
   guides(fill = guide_legend(override.aes = list(size = 10))) +
   theme_pubclean() +
   theme(axis.text.x = element_text(size =26, face = "bold"),
-        # axis.text.y = element_text(size =22, face = "bold"),
-        axis.text.y = element_blank(),
+        axis.text.y = element_text(size =26, face = "bold"),
+        # axis.text.y = element_blank(),
         axis.title.x = element_text(size = 30, face = "bold"),
+        axis.title.y = element_text(size = 26, face="bold"),
         # axis.title.y = element_text(size = 22, face="bold"),
-        axis.title.y = element_blank(),
-        axis.ticks.y = element_blank(),
+        # axis.title.y = element_blank(),
+        # axis.ticks.y = element_blank(),
         strip.background = element_blank(),
         strip.text = element_text(size=28, face = "bold"),
         # legend.position = "top",
@@ -316,20 +390,28 @@ PA.censor.plot.some <- ggplot(PA.censor.summarized[ce_contrast %in% c("c10-c00")
         # legend.text = element_text(size = 24, face = "bold"),
         # legend.key.size = unit(1.2,"cm"),
         plot.title = element_text(size = 36, face = "bold", hjust = .5, vjust = -0.5),
-        plot.margin=unit(c(1,1,1,0.15),"cm")
-        )
+        plot.margin=unit(c(1,1,1,0.15),"cm"))
+
+
 
 plot.noise.censored.combined <- ggarrange(PA.noise.plot.some,PA.censor.plot.some,
                                 ncol = 2, nrow = 1, align = "h",
-                                widths = c(1.57,1)
+                                # widths = c(1.57,1)
+                                widths = c(1.5,1)
                                 # widths = c(1.75,1)
                                 # common.legend = TRUE, legend = "top"
                                 )
 
-
 # Appendix plots
 
-PA.censor.plot.apdx <- ggplot(PA.censor.summarized[!ce_contrast %in% c("c10-c00"),],
+PA.censor.summarized$labels = factor(PA.censor.summarized$ce_contrast,
+                                     labels = c(TeX(r"($\tau(c_{\0\1}, c_{\0\0})$)",output = "character"),
+                                                TeX(r"($\tau(c_{\1\0}, c_{\0\0})$)",output = "character"),
+                                                TeX(r"($\tau(c_{\1\1}, c_{\0\0})$)",output = "character"),
+                                                TeX(r"($\tau(c_{\1\1}, c_{\0\1})$)",output = "character"),
+                                                TeX(r"($\tau(c_{\1\1}, c_{\1\0})$)",output = "character")))
+
+PA.censor.plot.apdx <- ggplot(PA.censor.summarized[variable %in% c("ht_ce","hajek_ce","exact.bias")],
                              aes(x = factor(param,levels = as.character(seq(7,1))),
                                  y = mean_esti,
                                  color = variable,
@@ -337,17 +419,17 @@ PA.censor.plot.apdx <- ggplot(PA.censor.summarized[!ce_contrast %in% c("c10-c00"
                                  fill = variable,
                                  shape = variable)) +
   geom_line(linewidth = 1, alpha = 0.7, show.legend = F) +
-  geom_point(size = 11) +
-  scale_fill_manual(values = c("ht_ce" = "#990000","hajek_ce" = "#0065A9"),
-                    labels = c("HT","Hajek")) +
-  scale_color_manual(values = c("ht_ce" = "#990000","hajek_ce" = "#0065A9"),
-                     labels = c("HT","Hajek")) +
-  scale_shape_manual(values = c("ht_ce" = 16,"hajek_ce" = 18),
-                     labels = c("HT","Hajek")) +
+  geom_point(size = 7, alpha=0.6) +
+  scale_fill_manual(values = c("ht_ce" = "#990000","hajek_ce" = "#0065A9","exact.bias"="darkgreen"),
+                    labels = c("HT","Hajek","Exact bias")) +
+  scale_color_manual(values = c("ht_ce" = "#990000","hajek_ce" = "#0065A9","exact.bias"="darkgreen"),
+                     labels = c("HT","Hajek","Exact bias")) +
+  scale_shape_manual(values = c("ht_ce" = 16,"hajek_ce" = 18,"exact.bias"=17),
+                     labels = c("HT","Hajek","Exact bias")) +
   geom_hline(yintercept = 0, lty = "dashed", linewidth = 1.1) +
-  scale_y_continuous(breaks = seq(0,280,20), limits = c(0,300)) +
-  labs(x=TeX("$\\eta$"), y = "Bias (%)") +
-  facet_wrap(~ce_contrast,nrow = 1) +
+  # scale_y_continuous(breaks = seq(0,280,20), limits = c(0,300)) +
+  labs(x=TeX("$\\eta$"), y = "Abs. bias") +
+  facet_wrap(~labels,nrow = 1,labeller = label_parsed, scales = "free_y") +
   guides(fill = guide_legend(override.aes = list(size = 10))) +
   theme_pubclean() +
   theme(axis.text.x = element_text(size =20, face = "bold"),
@@ -364,6 +446,10 @@ PA.censor.plot.apdx <- ggplot(PA.censor.summarized[!ce_contrast %in% c("c10-c00"
         legend.key.size = unit(1.2,"cm"),
         # plot.title = element_text(size = 34, face = "bold", hjust = .5, vjust = -0.5)
   )
+
+ggsave(filename = "Reproducibility/Simulations/graphics/Appendix/APDX_PA_censor_bias_1000iter.jpeg",
+       plot = PA.censor.plot.apdx, 
+       width = 18, height = 10)
 
 
 # Number of misclassified exposures
@@ -400,6 +486,12 @@ PA_censor_n_miclass_mean <- PA.censor.results[ce_contrast=="c11-c00",
 expos.labels <- c("c11","c01","c10","c00")
 names(expos.labels) <- c("n.c11","n.c01","n.c10","n.c00")
 
+PA_censor_n_miclass_melted$labels = factor(PA_censor_n_miclass_melted$variable,
+                                           labels = c(TeX(r"($c_{\1\1}$)",output = "character"),
+                                                      TeX(r"($c_{\0\1}$)",output = "character"),
+                                                      TeX(r"($c_{\1\0}$)",output = "character"),
+                                                      TeX(r"($c_{\0\0}$)",output = "character")))
+
 PA.censor.n.misclass.plot <- ggplot(PA_censor_n_miclass_melted,
                                    aes(x = factor(param,levels = as.character(seq(7,1))),
                                        y = value,
@@ -410,8 +502,8 @@ PA.censor.n.misclass.plot <- ggplot(PA_censor_n_miclass_melted,
                                    )) +
   geom_boxplot(fill="darkgrey", alpha = 0.7) +
   labs(x=TeX("$\\eta$"), y = "# Missclassified exposures") +
-  facet_wrap(~variable, nrow = 2,
-             labeller = labeller(variable=expos.labels)) +
+  facet_wrap(~labels, nrow = 2,
+             labeller = label_parsed) +
   # theme_pubclean() +
   theme_bw() +
   theme(axis.text.x = element_text(size =18, face = "bold"),
@@ -420,6 +512,10 @@ PA.censor.n.misclass.plot <- ggplot(PA_censor_n_miclass_melted,
         axis.title.y = element_text(size = 20, face="bold"),
         strip.background = element_blank(),
         strip.text = element_text(size=24, face = "bold"))
+
+ggsave(filename = "Reproducibility/Simulations/graphics/Appendix/APDX_PA_censor_n_missclassified_exposures.jpeg",
+       plot = PA.censor.n.misclass.plot, 
+       width = 18, height = 10)
 
 # HT and Hajek empirical SD
 
@@ -434,7 +530,15 @@ PA_censor_results.sd <- melt.data.table(PA_censor_results.sd,
                                        id.vars = c("ce_contrast","param"),
                                        measure.vars = c("sd.ht","sd.hajek"))
 
-PA.censor.sd.plot <- ggplot(PA_censor_results.sd[ce_contrast %in% c("c11-c00","c11-c10","c10-c00")],
+
+PA_censor_results.sd$labels = factor(PA_censor_results.sd$ce_contrast,
+                                     labels = c(TeX(r"($\tau(c_{\0\1}, c_{\0\0})$)",output = "character"),
+                                                TeX(r"($\tau(c_{\1\0}, c_{\0\0})$)",output = "character"),
+                                                TeX(r"($\tau(c_{\1\1}, c_{\0\0})$)",output = "character"),
+                                                TeX(r"($\tau(c_{\1\1}, c_{\0\1})$)",output = "character"),
+                                                TeX(r"($\tau(c_{\1\1}, c_{\1\0})$)",output = "character")))
+
+PA.censor.sd.plot <- ggplot(PA_censor_results.sd,
                            aes(x = factor(param,levels = as.character(seq(7,1))),
                                y = value,
                                color = variable,
@@ -442,7 +546,7 @@ PA.censor.sd.plot <- ggplot(PA_censor_results.sd[ce_contrast %in% c("c11-c00","c
                                fill = variable,
                                shape = variable)) +
   geom_line(linewidth = 1, alpha = 0.7, show.legend = F) +
-  geom_point(size = 10) +
+  geom_point(size = 7,alpha=0.6) +
   scale_fill_manual(values = c("sd.ht" = "#990000","sd.hajek" = "#0065A9"),
                     labels = c("HT","Hajek")) +
   scale_color_manual(values = c("sd.ht" = "#990000","sd.hajek" = "#0065A9"),
@@ -450,11 +554,11 @@ PA.censor.sd.plot <- ggplot(PA_censor_results.sd[ce_contrast %in% c("c11-c00","c
   scale_shape_manual(values = c("sd.ht" = 16,"sd.hajek" = 18),
                      labels = c("HT","Hajek")) +
   # geom_hline(yintercept = 0, lty = "dashed", linewidth = 1.1) +
-  labs(x=TeX("$\\eta$"), y = "empirical SD (nominal)") +
+  labs(x=TeX("$\\eta$"), y = "Empirical SD") +
   # facet_wrap(~ce_contrast,nrow = 1,
   #            labeller = labeller(ce_contrast = c("c01-c00"="Indirect effect",
   #                                                "c11-c00"="Total effect"))) +
-  facet_wrap(~ce_contrast, nrow = 1) +
+  facet_wrap(~labels, nrow = 1, labeller = label_parsed) +
   guides(fill = guide_legend(override.aes = list(size = 10))) +
   # theme_pubclean() +
   theme_bw() +
@@ -470,6 +574,9 @@ PA.censor.sd.plot <- ggplot(PA_censor_results.sd[ce_contrast %in% c("c11-c00","c
         legend.text = element_text(size = 20, face = "bold"),
         legend.key.size = unit(1.2,"cm"))
 
+ggsave(filename = "Reproducibility/Simulations/graphics/Appendix/APDX_PA_censor_SD_plot.jpeg",
+       plot = PA.censor.sd.plot, 
+       width = 18, height = 10)
 
 # Network similarity with Jaccard index
 
@@ -480,7 +587,7 @@ rownames(PA.censor.jaccard) <- c("eta","J")
 kable(x = PA.censor.jaccard,format = "latex", booktabs = T )
 
 
-# Contamination -----------------------------------------------------------
+# Scenario III - Contamination -----------------------------------------------------------
 
 # Read data
 
@@ -490,35 +597,51 @@ CR_vari <- fread("Reproducibility/Simulations/results/CR_bias_Nc2000_vari_M1000.
 
 # Summarized
 
-cr_fixed_summarized <- CR_fixed[,.(mean_bias = abs(mean(100*(y_hat-y_true)/y_true)),
-                                   perc025 = quantile(100*(y_hat-y_true)/y_true,0.025),
-                                   perc975 = quantile(100*(y_hat-y_true)/y_true,0.975)),
+cr_fixed_summarized <- CR_fixed[,.(mean_bias = abs(mean(y_hat-y_true))),
+                                   # perc025 = quantile(100*(y_hat-y_true)/y_true,0.025),
+                                   # perc975 = quantile(100*(y_hat-y_true)/y_true,0.975)),
                                 by = "theta_"]
 
-cr_vari_summarized <- CR_vari[,.(mean_bias = abs(mean(100*(y_hat-y_true)/y_true)),
-                                 perc025 = quantile(100*(y_hat-y_true)/y_true,0.025),
-                                 perc975 = quantile(100*(y_hat-y_true)/y_true,0.975)),
+cr_vari_summarized <- CR_vari[,.(mean_bias = abs(mean(y_hat-y_true))),
+                                 # perc025 = quantile(100*(y_hat-y_true)/y_true,0.025),
+                                 # perc975 = quantile(100*(y_hat-y_true)/y_true,0.975)),
                               by = "theta_"]
 
+# cr_fixed_summarized <- CR_fixed[,.(mean_bias = abs(mean(100*(y_hat-y_true)/y_true)),
+#                                    perc025 = quantile(100*(y_hat-y_true)/y_true,0.025),
+#                                    perc975 = quantile(100*(y_hat-y_true)/y_true,0.975)),
+#                                 by = "theta_"]
+# 
+# cr_vari_summarized <- CR_vari[,.(mean_bias = abs(mean(100*(y_hat-y_true)/y_true)),
+#                                  perc025 = quantile(100*(y_hat-y_true)/y_true,0.025),
+#                                  perc975 = quantile(100*(y_hat-y_true)/y_true,0.975)),
+#                               by = "theta_"]
+# 
 cr_fixed_summarized[,cluster_type := "Fixed"]
 cr_vari_summarized[,cluster_type := "Varied"]
 
 cr_summarized <- rbindlist(list(cr_fixed_summarized, cr_vari_summarized))
 
 
-bias_cluster_plot <- ggplot(cr_summarized[theta_ %in% seq(0,0.1,0.01),],
+bias_cluster_plot <- 
+  ggplot(cr_summarized[theta_ %in% seq(0,0.05,0.005),],
+  # ggplot(cr_summarized[theta_ %in% seq(0,0.1,0.01),],
                             aes(x=theta_, y = mean_bias,
                                 fill = cluster_type, color = cluster_type,
                                 shape = cluster_type)) +
   geom_hline(yintercept = 0, lty = "dashed", linewidth = 1.1) +
-  geom_point(size = 11) +
+  # geom_point(size = 11) +
+  geom_point(size = 10) +
   geom_line(linewidth = 1, alpha = 0.7, show.legend = F) +
-  scale_x_continuous(breaks = seq(0,0.1,0.01), labels = as.character(seq(0,0.1,0.01))) +
-  scale_y_continuous(breaks = seq(0,40,10), limits = c(0,40)) +
+  scale_x_continuous(breaks = seq(0,0.05,0.005), labels = as.character(seq(0,0.05,0.005))) +
+  # scale_x_continuous(breaks = seq(0,0.1,0.01), labels = as.character(seq(0,0.1,0.01))) +
+  # scale_y_continuous(breaks = seq(0,40,10), limits = c(0,40)) +
+  scale_y_continuous(breaks = seq(0,0.35,0.05), limits = c(0,.35)) +
   scale_color_manual(values = c("Fixed" = "#009933", "Varied" = "#660033")) +
   scale_fill_manual(values = c("Fixed" = "#009933", "Varied" = "#660033")) +
   scale_shape_manual(values = c("Fixed" = 15,"Varied" = 17)) +
-  labs(x=TeX("$\\gamma$"), y="Bias (%)", title = "(III)") +
+  # labs(x=TeX("$\\gamma$"), y="Bias (%)", title = "(III)") +
+  labs(x=TeX("$\\gamma$"), y="Abs. bias", title = "(III)") +
   guides(fill = guide_legend(override.aes = list(size = 12))) +
   theme_pubclean() +
   theme(axis.text.x = element_text(size =26, face = "bold"),
@@ -565,4 +688,10 @@ plot.contamination.legend <- ggarrange(bias_cluster_plot, legend.plot,
 
 plot.all.combined <- ggarrange(plot.noise.censored.combined, plot.contamination.legend,
                                nrow = 2)
+
+ggsave(filename = "Reproducibility/Simulations/graphics/Main/Bias_plot_all_scenarios_combined_1000iter.jpeg",
+       plot = plot.all.combined, 
+       width = 20, height = 12)
+
+
 

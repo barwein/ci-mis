@@ -13,26 +13,61 @@ library(ggpubr)
 
 
 
-# Graphics ----------------------------------------------------------------
+# Joint -------------------------------------------------------------------
+# 
+# csv_names <- dir("Reproducibility/Simulations/results/NMR_palluck/")
+# path_name <- "Reproducibility/Simulations/results/NMR_palluck/"
+# 
+# combined_dt <- data.table()
+# 
+# for (res_name in csv_names) {
+# 
+#   curr_dt <- fread(paste0(path_name,res_name))
+#   combined_dt <- rbindlist(list(combined_dt,curr_dt))
+# }
+# 
+# 
+# setorderv(combined_dt, c("K","adj.mat.used","iter"))
+# 
+# write.csv(combined_dt,
+#           "Reproducibility/Simulations/results/MR_bias_var_PalluckNets.csv",
+#           row.names = FALSE)
 
-MR.sim.results <- fread("Reproducibility/Simulations/results/MR_bias_var_PA_n3000_K6_eta0.25.csv")
+
+
+
+# Noisy networks ----------------------------------------------------------------
+
+# MR.sim.results <- fread("Reproducibility/Simulations/results/MR_bias_var_PA_n3000_K6_eta0.25.csv")
+MR.sim.results <- fread("Reproducibility/Simulations/results/MR_bias_var_PalluckNets.csv")
 
 MR.sim.results[,true_effect := rep(c(1,0.75,0.5,0.25,0.5),nrow(MR.sim.results)/5)]
 
-mean.sim.results <- MR.sim.results[,.(m_ht = abs(100*mean((ht_ce-true_effect)/true_effect)),
-                                   m_hajek = abs(100*mean((hajek_ce-true_effect)/true_effect)),
-                                   se_ht = 100*sd(ht_ce/true_effect,na.rm=T),
-                                   se_hajek = 100*sd(hajek_ce/true_effect,na.rm=T),
-                                   rmse_ht = sqrt((100*mean((ht_ce-true_effect)/true_effect))^2 +
-                                                    (100*sd(ht_ce/true_effect,na.rm=T))^2),
-                                   rmse_hajek = sqrt((100*mean((hajek_ce-true_effect)/true_effect))^2 +
-                                                       (100*sd(hajek_ce/true_effect,na.rm=T))^2)
+mean.sim.results <- MR.sim.results[,.(m_ht = abs(mean(ht_ce-true_effect)),
+                                   m_hajek = abs(mean(hajek_ce-true_effect)),
+                                   se_ht = sd(ht_ce,na.rm=T),
+                                   se_hajek = sd(hajek_ce,na.rm=T),
+                                   rmse_ht = sqrt((mean(ht_ce-true_effect))^2 +
+                                                    var(ht_ce,na.rm=T)),
+                                   rmse_hajek = sqrt((mean(hajek_ce-true_effect))^2 +
+                                                       var(hajek_ce,na.rm=T))
                                    ),
                                 by = c("ce_contrast","K","adj.mat.used","with.true.adj")]
 
+# mean.sim.results <- MR.sim.results[,.(m_ht = abs(100*mean((ht_ce-true_effect)/true_effect)),
+#                                    m_hajek = abs(100*mean((hajek_ce-true_effect)/true_effect)),
+#                                    se_ht = 100*sd(ht_ce/true_effect,na.rm=T),
+#                                    se_hajek = 100*sd(hajek_ce/true_effect,na.rm=T),
+#                                    rmse_ht = sqrt((100*mean((ht_ce-true_effect)/true_effect))^2 +
+#                                                     (100*sd(ht_ce/true_effect,na.rm=T))^2),
+#                                    rmse_hajek = sqrt((100*mean((hajek_ce-true_effect)/true_effect))^2 +
+#                                                        (100*sd(hajek_ce/true_effect,na.rm=T))^2)
+#                                    ),
+#                                 by = c("ce_contrast","K","adj.mat.used","with.true.adj")]
+# 
 
 
-# Main plot c11-c10 -------------------------------------------------------
+# Main plot c11-c10
 
 # [ce_contrast == "c11-c10",]
 p.hajek.bias <- ggplot(mean.sim.results[ce_contrast == "c11-c10",],
@@ -49,7 +84,7 @@ p.hajek.bias <- ggplot(mean.sim.results[ce_contrast == "c11-c10",],
                 scale_color_manual(labels = c("A* not included", "A* included"), values = c("red4","green4")) +
                 scale_shape_manual(labels = c("A* not included", "A* included"), values = c(1,4)) +
                 # scale_y_continuous(breaks = seq(0,0.6,0.1),limits = c(0,0.63)) +
-                scale_y_continuous(breaks = seq(0,120,20),limits = c(0,120)) +
+                # scale_y_continuous(breaks = seq(0,120,20),limits = c(0,120)) +
                 # facet_wrap(~ce_contrast, nrow = 1, scales = "free") +
                 theme_pubclean() +
                 guides(color = guide_legend(override.aes = list(size = 12))) +
@@ -81,7 +116,7 @@ p.hajek.sd <- ggplot(mean.sim.results[ce_contrast == "c11-c10",],
               scale_color_manual(labels = c("A* not included", "A* included"), values = c("red4","green4")) +
               scale_shape_manual(labels = c("A* not included", "A* included"), values = c(1,4)) +
               # scale_y_continuous(breaks = seq(0,0.6,0.1),limits = c(0,0.63)) +
-              scale_y_continuous(breaks = seq(0,120,20),limits = c(0,120)) +
+              # scale_y_continuous(breaks = seq(0,120,20),limits = c(0,120)) +
               # facet_wrap(~ce_contrast, nrow = 1, scales = "free") +
               theme_pubclean() +
               guides(color = guide_legend(override.aes = list(size = 12))) +
@@ -113,7 +148,7 @@ p.hajek.rmse <- ggplot(mean.sim.results[ce_contrast == "c11-c10",],
                 scale_color_manual(labels = c("A* not included", "A* included"), values = c("red4","green4")) +
                 scale_shape_manual(labels = c("A* not included", "A* included"), values = c(1,4)) +
                 # scale_y_continuous(breaks = seq(0,0.6,0.1),limits = c(0,0.63)) +
-                scale_y_continuous(breaks = seq(0,120,20),limits = c(0,120)) +
+                # scale_y_continuous(breaks = seq(0,120,20),limits = c(0,120)) +
                 # facet_wrap(~ce_contrast, nrow = 1, scales = "free") +
                 theme_pubclean() +
                 guides(color = guide_legend(override.aes = list(size = 12))) +
@@ -139,10 +174,12 @@ p.hajek.both <- ggarrange(p.hajek.bias,p.hajek.sd,p.hajek.rmse,
                           #                 face = "bold", size =14))
 
 
-# APPENDIX plot -------------------------------------------------------
+# APPENDIX plot
 
 
-p.hajek.bias.apdx <- ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c00"),],
+p.hajek.bias.apdx <- 
+  # ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c00"),],
+  ggplot(mean.sim.results,
                        aes(x=factor(K),y = m_hajek,
                            col = with.true.adj, shape = with.true.adj)) +
   labs(title = "Bias", 
@@ -156,7 +193,7 @@ p.hajek.bias.apdx <- ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c
   scale_color_manual(labels = c("A* not included", "A* included"), values = c("red4","green4")) +
   scale_shape_manual(labels = c("A* not included", "A* included"), values = c(1,4)) +
   # scale_y_continuous(breaks = seq(0,0.5,0.1),limits = c(0,0.55)) +
-  scale_y_continuous(breaks = seq(0,140,20),limits = c(0,140)) +
+  # scale_y_continuous(breaks = seq(0,140,20),limits = c(0,140)) +
   facet_wrap(~ce_contrast, nrow = 1, scales = "free") +
   theme_pubclean() +
   guides(color = guide_legend(override.aes = list(size = 10))) +
@@ -171,7 +208,9 @@ p.hajek.bias.apdx <- ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c
 
 
 
-p.hajek.sd.apdx <- ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c00"),],
+p.hajek.sd.apdx <- 
+  # ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c00"),],
+  ggplot(mean.sim.results,
                      aes(x=factor(K),y = se_hajek,
                          col = with.true.adj, shape = with.true.adj)) +
   labs(title = "SD", 
@@ -185,7 +224,7 @@ p.hajek.sd.apdx <- ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c00
   scale_color_manual(labels = c("A* not included", "A* included"), values = c("red4","green4")) +
   scale_shape_manual(labels = c("A* not included", "A* included"), values = c(1,4)) +
   # scale_y_continuous(breaks = seq(0,0.5,0.1),limits = c(0,0.53)) +
-  scale_y_continuous(breaks = seq(0,140,20),limits = c(0,140)) +
+  # scale_y_continuous(breaks = seq(0,140,20),limits = c(0,140)) +
   facet_wrap(~ce_contrast, nrow = 1, scales = "free") +
   theme_pubclean() +
   guides(color = guide_legend(override.aes = list(size = 10))) +
@@ -200,7 +239,9 @@ p.hajek.sd.apdx <- ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c00
 
 
 
-p.hajek.rmse.apdx <- ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c00"),],
+p.hajek.rmse.apdx <- 
+  # ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c00"),],
+  ggplot(mean.sim.results,
                        aes(x=factor(K),y = rmse_hajek,
                            col = with.true.adj, shape = with.true.adj)) +
                     labs(title = "RMSE", 
@@ -214,7 +255,7 @@ p.hajek.rmse.apdx <- ggplot(mean.sim.results[ce_contrast %in% c("c01-c00","c11-c
                     scale_color_manual(labels = c("A* not included", "A* included"), values = c("red4","green4")) +
                     scale_shape_manual(labels = c("A* not included", "A* included"), values = c(1,4)) +
                     # scale_y_continuous(breaks = seq(0,0.5,0.1),limits = c(0,0.53)) +
-                    scale_y_continuous(breaks = seq(0,140,20),limits = c(0,140)) +
+                    # scale_y_continuous(breaks = seq(0,140,20),limits = c(0,140)) +
                     facet_wrap(~ce_contrast, nrow = 1, scales = "free") +
                     theme_pubclean() +
                     guides(color = guide_legend(override.aes = list(size = 10))) +
@@ -238,7 +279,9 @@ p.hajek.both.apdx <- ggarrange(p.hajek.bias.apdx,p.hajek.sd.apdx,p.hajek.rmse.ap
 
 
 
-# SE SD comparison --------------------------------------------------------
+
+# SE/SD comparisons -------------------------------------------------------
+
 
 se_sd_comparison <- MR.sim.results[with.true.adj==TRUE ,
                                    .(hajek.se.sd = sqrt(var_hajek_ce)/sd(hajek_ce),
@@ -263,7 +306,8 @@ se_sd_comparison_mean <- melt.data.table(se_sd_comparison_mean,
                       value.name = "se.sd")
 
 # [ce_contrast=="c01-c00",]
-se.to.sd.plot <- ggplot(se_sd_comparison_mean[ce_contrast=="c01-c00",],
+se.to.sd.plot <- ggplot(
+  se_sd_comparison_mean[ce_contrast=="c01-c00",],
                aes(x=factor(K), y = se.sd, col=esti, shape = esti)) +
             geom_point(size=10,alpha= 0.7) +
             geom_hline(yintercept = 1, lty = "dashed", linewidth = 1.1) +
@@ -286,4 +330,128 @@ se.to.sd.plot <- ggplot(se_sd_comparison_mean[ce_contrast=="c01-c00",],
                 legend.text = element_text(size = 26, face = "bold"),
                 legend.key.size = unit(1.2,"cm"),
           )
+
+
+
+# Palluck et al. Networks -------------------------------------------------
+
+MR.sim.palluck <- fread("Reproducibility/Simulations/results/MR_bias_var_PalluckNets.csv")
+
+MR.sim.palluck[,true_effect := rep(c(1,0.75,0.5,0.25,0.5),nrow(MR.sim.palluck)/5)]
+
+mean.sim.palluck <- MR.sim.palluck[,.(m_ht = abs(mean(ht_ce-true_effect)),
+                                      m_hajek = abs(mean(hajek_ce-true_effect)),
+                                      se_ht = sd(ht_ce,na.rm=T),
+                                      se_hajek = sd(hajek_ce,na.rm=T),
+                                      rmse_ht = sqrt((mean(ht_ce-true_effect))^2 +
+                                                       var(ht_ce,na.rm=T)),
+                                      rmse_hajek = sqrt((mean(hajek_ce-true_effect))^2 +
+                                                          var(hajek_ce,na.rm=T))),
+                                   by = c("ce_contrast","K","adj.mat.used","with.true.adj")]
+
+mean.sim.palluck$labels = factor(mean.sim.palluck$ce_contrast,
+                                    labels = c(TeX(r"($\tau(c_{\0\1}, c_{\0\0})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\0}, c_{\0\0})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\1}, c_{\0\0})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\1}, c_{\0\1})$)",output = "character"),
+                                               TeX(r"($\tau(c_{\1\1}, c_{\1\0})$)",output = "character")))
+
+
+p.hajek.bias.apdx.palluck <- 
+  ggplot(mean.sim.palluck[ce_contrast %in% c("c11-c00","c11-c10"),],
+         aes(x=factor(K),y = m_hajek,
+             col = with.true.adj, shape = with.true.adj)) +
+  labs(title = "Bias", 
+       x = "",
+       # y = TeX('$\\tau - \\hat{\\tau}$')
+       y = ""
+  ) +
+  geom_point(size = 8, stroke = 1.6) +
+  scale_color_manual(labels = c("A* not included", "A* included"), values = c("red4","green4")) +
+  scale_shape_manual(labels = c("A* not included", "A* included"), values = c(1,4)) +
+  scale_y_continuous(expand = expansion(add = .15)) +
+  facet_wrap(~labels,nrow = 1, labeller = label_parsed, scales = "free_y") +
+  theme_pubclean() +
+  # theme_minimal() +
+  guides(color = guide_legend(override.aes = list(size = 10))) +
+  theme(axis.title.x = element_text(size = 26, face = "bold"),
+        title = element_text(size = 24, face="bold"),
+        axis.text = element_text(size=22, face = "bold"),
+        # legend.title = element_text(size = 14),
+        legend.title = element_blank(),
+        legend.text = element_text(face = "bold", size = 26),
+        legend.key.size = unit(1.1,"cm"),
+        strip.text = element_text(size=22, face = "bold")) 
+
+
+
+p.hajek.sd.apdx.palluck <- 
+  ggplot(mean.sim.palluck[ce_contrast %in% c("c11-c00","c11-c10"),],
+         aes(x=factor(K),y = se_hajek,
+             col = with.true.adj, shape = with.true.adj)) +
+  labs(title = "SD", 
+       x = "",
+       # y = TeX('$\\tau - \\hat{\\tau}$')
+       y = ""
+  ) +
+  geom_point(size = 8, stroke = 1.6) +
+  scale_color_manual(labels = c("A* not included", "A* included"), values = c("red4","green4")) +
+  scale_shape_manual(labels = c("A* not included", "A* included"), values = c(1,4)) +
+  scale_y_continuous(expand = expansion(add = .05)) +
+  facet_wrap(~labels,nrow = 1, labeller = label_parsed, scales = "free_y") +
+  theme_pubclean() +
+  # theme_minimal() +
+  guides(color = guide_legend(override.aes = list(size = 10))) +
+  theme(axis.title.x = element_text(size = 26, face = "bold"),
+        title = element_text(size = 24, face="bold"),
+        axis.text = element_text(size=22, face = "bold"),
+        # legend.title = element_text(size = 14),
+        legend.title = element_blank(),
+        legend.text = element_text(face = "bold", size = 26),
+        legend.key.size = unit(1.1,"cm"),
+        strip.text = element_text(size=22, face = "bold")) 
+
+
+
+p.hajek.rmse.apdx.palluck <- 
+  ggplot(mean.sim.palluck[ce_contrast %in% c("c11-c00","c11-c10"),],
+         aes(x=factor(K),y = rmse_hajek,
+             col = with.true.adj, shape = with.true.adj)) +
+  labs(title = "RMSE", 
+       x = "# networks used",
+       # y = TeX('$\\tau - \\hat{\\tau}$')
+       y = ""
+  ) +
+  geom_point(size = 8, stroke = 1.6) +
+  scale_color_manual(labels = c("A* not included", "A* included"), values = c("red4","green4")) +
+  scale_shape_manual(labels = c("A* not included", "A* included"), values = c(1,4)) +
+  scale_y_continuous(expand = expansion(add = .15)) +
+  facet_wrap(~labels,nrow = 1, labeller = label_parsed, scales = "free_y") +
+  theme_pubclean() +
+  # theme_minimal() +
+  guides(color = guide_legend(override.aes = list(size = 10))) +
+  theme(axis.title.x = element_text(size = 26, face = "bold"),
+        title = element_text(size = 24, face="bold"),
+        axis.text = element_text(size=22, face = "bold"),
+        # legend.title = element_text(size = 14),
+        legend.title = element_blank(),
+        legend.text = element_text(face = "bold", size = 26),
+        legend.key.size = unit(1.1,"cm"),
+        strip.text = element_text(size=22, face = "bold")) 
+
+
+
+p.hajek.all.apdx.palluck <- ggarrange(p.hajek.bias.apdx.palluck,
+                               p.hajek.sd.apdx.palluck,
+                               p.hajek.rmse.apdx.palluck,
+                               nrow = 3,ncol = 1,
+                               # widths = c(1,1,2),
+                               common.legend = T, legend = "top")
+
+ggsave("Reproducibility/Simulations/graphics/Appendix/NMR_bias_var_APDX_Palluck_Networks.jpeg",
+       plot = p.hajek.all.apdx.palluck,
+       width = 18, height = 24)
+
+
+
 
