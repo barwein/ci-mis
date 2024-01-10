@@ -297,6 +297,104 @@ rownames(PA.noise.jaccard) <- c("eta","J")
 kable(x = PA.noise.jaccard,format = "latex", booktabs = T )
 
 
+# Spaghetti plots
+
+
+# csv_names <- dir("Reproducibility/Simulations/results/APDX_noise/")
+# path_name <- "Reproducibility/Simulations/results/APDX_noise/"
+# 
+# combined_dt <- data.table()
+# 
+# for (i in seq(length(csv_names))) {
+#   
+#   res_name <- csv_names[i]
+#   curr_dt <- fread(paste0(path_name,res_name))
+#   curr_dt$m.it <- i
+#   combined_dt <- rbindlist(list(combined_dt,curr_dt))
+# }
+# 
+# 
+# write.csv(combined_dt,
+#           "Reproducibility/Simulations/results/APDX_noise_spagetti.csv",
+#           row.names = FALSE)
+
+
+spaghetti.noise <- fread("Reproducibility/Simulations/results/APDX_noise_spagetti.csv")
+
+spaghetti.noise[,true_effect := rep(c(1,0.75,0.5,0.25,0.5),nrow(spaghetti.noise)/5)]
+
+PA.noise.results[,m.it := "A"]
+
+spaghetti.noise <- rbindlist(list(spaghetti.noise,
+                                  PA.noise.results[,.SD,.SDcols = names(spaghetti.noise)]))
+
+
+spaghetti.noise.melted <- melt.data.table(spaghetti.noise,
+                                   id.vars = c("ce_contrast","param","true_effect","m.it"),
+                                   measure.vars = c("ht_ce","hajek_ce"))
+
+
+spaghetti.noise.summarized <- spaghetti.noise.melted[,
+                                                .(mean_esti = abs(mean(value-true_effect)),
+                                                  # perc025 = quantile(100*(value-true_effect)/true_effect,0.025),
+                                                  # perc975 = quantile(100*(value-true_effect)/true_effect,0.975),
+                                                  sd.h = sd(value-true_effect)),
+                                                by = c("ce_contrast","param","variable","m.it")]
+
+spaghetti.noise.summarized[,apdx := ifelse(m.it == "A",FALSE,TRUE)]
+
+spaghetti.noise.summarized$labels = factor(spaghetti.noise.summarized$ce_contrast,
+                                      labels = c(TeX(r"($\tau(c_{\0\1}, c_{\0\0})$)",output = "character"),
+                                                 TeX(r"($\tau(c_{\1\0}, c_{\0\0})$)",output = "character"),
+                                                 TeX(r"($\tau(c_{\1\1}, c_{\0\0})$)",output = "character"),
+                                                 TeX(r"($\tau(c_{\1\1}, c_{\0\1})$)",output = "character"),
+                                                 TeX(r"($\tau(c_{\1\1}, c_{\1\0})$)",output = "character")))
+
+noise.spagehtti.plot <- ggplot(spaghetti.noise.summarized[ce_contrast %in% c("c11-c00","c11-c10") &
+                                                       variable == "hajek_ce",],
+                               aes(x = factor(param), 
+                                   y = mean_esti,
+                                   color = apdx,
+                                   group = m.it,
+                                   fill = apdx, 
+                                   alpha = apdx,
+                                   linewidth = apdx)) +
+  geom_line(show.legend = F) + 
+  scale_alpha_manual(values = c(0.8,0.2)) +
+  scale_linewidth_discrete(range = c(1.6,1)) +
+  # geom_point(size = 12, shape = 18) + 
+  scale_fill_manual(values = c("TRUE" = "gray44","FALSE" = "#0065A9")) +
+  # ,labels = c("HT","Hajek")) +
+  scale_color_manual(values = c("TRUE" = "gray44","FALSE" = "#0065A9")) +
+  # ,labels = c("HT","Hajek")) +
+  # scale_shape_manual(values = c("ht_ce" = 16,"hajek_ce" = 18),
+  #                    labels = c("HT","Hajek")) +
+  geom_hline(yintercept = 0, lty = "dashed", linewidth = 1.1) +
+  scale_y_continuous(breaks = seq(0,0.4,0.1),limits = c(0,0.4)) +
+  labs(x=TeX("$\\eta$"), y = "Abs. bias") +
+  facet_wrap(~labels,nrow = 1, labeller = label_parsed) +
+  guides(fill = guide_legend(override.aes = list(size = 12))) +
+  theme_pubclean() +
+  theme(axis.text.x = element_text(size =26, face = "bold"),
+        axis.text.y = element_text(size =26, face = "bold"),
+        axis.title.x = element_text(size = 44, face = "bold"),
+        axis.title.y = element_text(size = 26, face="bold"),
+        strip.background = element_blank(),
+        strip.text = element_text(size=28, face = "bold"),
+        # legend.position = "top",
+        legend.position = "none",
+        # legend.position = c(0.5,0.1),
+        # legend.title = element_blank(),
+        # legend.text = element_text(size = 24, face = "bold"),
+        # legend.key.size = unit(1.2,"cm"),
+        plot.title = element_text(size = 36, face = "bold", hjust = .5, vjust = -0.5))
+
+
+ggsave(filename = "Reproducibility/Simulations/graphics/Appendix/APDX_noise_spagehti.jpeg",
+       plot = noise.spagehtti.plot, 
+       width = 20, height = 12)
+
+
 # Scenario II - Censoring ---------------------------------------------------------------
 
 # Read data
@@ -585,6 +683,106 @@ PA.censor.jaccard <- rbind(order(unique(PA.censor.results$param),decreasing = T)
 rownames(PA.censor.jaccard) <- c("eta","J")
 
 kable(x = PA.censor.jaccard,format = "latex", booktabs = T )
+
+
+# Spaghetti plots
+
+
+# csv_names <- dir("Reproducibility/Simulations/results/APDX_censor/")
+# path_name <- "Reproducibility/Simulations/results/APDX_censor/"
+# 
+# combined_dt <- data.table()
+# 
+# for (i in seq(length(csv_names))) {
+# 
+#   res_name <- csv_names[i]
+#   curr_dt <- fread(paste0(path_name,res_name))
+#   curr_dt$m.it <- i
+#   combined_dt <- rbindlist(list(combined_dt,curr_dt))
+# }
+# 
+# 
+# write.csv(combined_dt,
+#           "Reproducibility/Simulations/results/APDX_censor_spagetti.csv",
+#           row.names = FALSE)
+
+
+spaghetti.censor <- fread("Reproducibility/Simulations/results/APDX_censor_spagetti.csv")
+
+spaghetti.censor[,true_effect := rep(c(1,0.75,0.5,0.25,0.5),nrow(spaghetti.censor)/5)]
+
+PA.censor.results[,m.it := "A"]
+
+spaghetti.censor <- rbindlist(list(spaghetti.censor,
+                                  PA.censor.results[,.SD,.SDcols = names(spaghetti.censor)]))
+
+
+spaghetti.censor.melted <- melt.data.table(spaghetti.censor,
+                                          id.vars = c("ce_contrast","param","true_effect","m.it"),
+                                          measure.vars = c("ht_ce","hajek_ce"))
+
+
+spaghetti.censor.summarized <- spaghetti.censor.melted[,
+                                                     .(mean_esti = abs(mean(value-true_effect)),
+                                                       # perc025 = quantile(100*(value-true_effect)/true_effect,0.025),
+                                                       # perc975 = quantile(100*(value-true_effect)/true_effect,0.975),
+                                                       sd.h = sd(value-true_effect)),
+                                                     by = c("ce_contrast","param","variable","m.it")]
+
+spaghetti.censor.summarized[,apdx := ifelse(m.it == "A",FALSE,TRUE)]
+
+spaghetti.censor.summarized$labels = factor(spaghetti.censor.summarized$ce_contrast,
+                                           labels = c(TeX(r"($\tau(c_{\0\1}, c_{\0\0})$)",output = "character"),
+                                                      TeX(r"($\tau(c_{\1\0}, c_{\0\0})$)",output = "character"),
+                                                      TeX(r"($\tau(c_{\1\1}, c_{\0\0})$)",output = "character"),
+                                                      TeX(r"($\tau(c_{\1\1}, c_{\0\1})$)",output = "character"),
+                                                      TeX(r"($\tau(c_{\1\1}, c_{\1\0})$)",output = "character")))
+
+censor.spagehtti.plot <- ggplot(spaghetti.censor.summarized[ce_contrast %in% c("c10-c00","c11-c00") &
+                                                            variable == "hajek_ce",],
+                               aes(x = factor(param,levels = as.character(seq(7,1))), 
+                                   y = mean_esti,
+                                   color = apdx,
+                                   group = m.it,
+                                   fill = apdx, 
+                                   alpha = apdx,
+                                   linewidth = apdx)) +
+  geom_line(show.legend = F) + 
+  scale_alpha_manual(values = c(0.8,0.2)) +
+  scale_linewidth_discrete(range = c(1.6,1)) +
+  # geom_point(size = 12, shape = 18) + 
+  scale_fill_manual(values = c("TRUE" = "gray44","FALSE" = "#0065A9")) +
+  # ,labels = c("HT","Hajek")) +
+  scale_color_manual(values = c("TRUE" = "gray44","FALSE" = "#0065A9")) +
+  # ,labels = c("HT","Hajek")) +
+  # scale_shape_manual(values = c("ht_ce" = 16,"hajek_ce" = 18),
+  #                    labels = c("HT","Hajek")) +
+  geom_hline(yintercept = 0, lty = "dashed", linewidth = 1.1) +
+  # scale_y_continuous(breaks = seq(0,0.4,0.1),limits = c(0,0.4)) +
+  labs(x="K", y = "Abs. bias") +
+  facet_wrap(~labels,nrow = 1, labeller = label_parsed) +
+  guides(fill = guide_legend(override.aes = list(size = 12))) +
+  theme_pubclean() +
+  theme(axis.text.x = element_text(size =26, face = "bold"),
+        axis.text.y = element_text(size =26, face = "bold"),
+        axis.title.x = element_text(size = 44, face = "bold"),
+        axis.title.y = element_text(size = 26, face="bold"),
+        strip.background = element_blank(),
+        strip.text = element_text(size=28, face = "bold"),
+        # legend.position = "top",
+        legend.position = "none",
+        # legend.position = c(0.5,0.1),
+        # legend.title = element_blank(),
+        # legend.text = element_text(size = 24, face = "bold"),
+        # legend.key.size = unit(1.2,"cm"),
+        plot.title = element_text(size = 36, face = "bold", hjust = .5, vjust = -0.5))
+
+
+ggsave(filename = "Reproducibility/Simulations/graphics/Appendix/APDX_censor_spagehti.jpeg",
+       plot = censor.spagehtti.plot, 
+       width = 20, height = 12)
+
+
 
 
 # Scenario III - Contamination -----------------------------------------------------------

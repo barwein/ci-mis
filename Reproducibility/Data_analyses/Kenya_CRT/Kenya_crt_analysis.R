@@ -36,7 +36,9 @@ setkeyv(school.df.post, "Participant_ID")
 # Combine pre- and post- data
 school.relevant.only <- school.df.pre[school.df.post]
 
-school.relevant.only <- school.relevant.only[,.(Class, School, Participant_ID, Condition,
+school.relevant.only <- school.relevant.only[,.(Class, School, Participant_ID,
+                                                Gender,
+                                                Condition,
                                                 GAD_Total, i.GAD_Total,
                                                 PHQ_Total, i.PHQ_Total)]
 
@@ -47,6 +49,11 @@ school.relevant.only[,`:=`(gad.diff = i.GAD_Total - GAD_Total,
 # Define new version of treatment
 school.relevant.only[,Treatment := as.numeric(Condition %in% c("Values","Growth"))]
 
+# Save DF
+
+write.csv(school.relevant.only,
+          "Reproducibility/Data_analyses/Kenya_CRT/school.df.csv",
+          row.names = F)
 
 # ATE under the null ------------------------------------------------------
 
@@ -88,16 +95,292 @@ paste0("PHQ effect estimate [CI] is ", round(null.ATE.phq,3),
        round(null.phq.ci.high,3),"]")
 
 
-# SA ----------------------------------------------------------------------
+# PBA ----------------------------------------------------------------------
+
+# Read data
+kenya_df <- fread("Reproducibility/Data_analyses/Kenya_CRT/school.df.csv")
 
 # Order by Class, School
 setorderv(school.relevant.only, c("Class","School"))
-
 
 school.names <- unique(school.relevant.only$School) # "KDSS" "MGSS"
 
 n.each.KDSS <- c(table(school.relevant.only[School == "KDSS", Class]))
 n.each.MGSS <- c(table(school.relevant.only[School == "MGSS", Class]))
+
+
+# PBA aux functions
+
+Between_cluster_edges_prob <- function(theta.vec, school.id){
+  # Function that generates cross-clusters edges with prob theta_{ij} for units in the same school
+  # school.id is cluster level covarite
+  q <- length(school.id) # number of clusters
+  theta.mat <- matrix(NA,q,q)
+  theta.mat[lower.tri(theta.mat)] <- theta.vec # matrix of theta values
+  between.prob.mat <- matrix(NA,q,q) # results matrix
+  for (i in seq(q-1)){
+    for (j in seq(i+1,q)) {
+        # P(A_{ij}=1) = I(school_i=school_j)*theta_ij 
+        # if theta.vec is singelton then theta_ij = theta 
+        between.prob.mat[j,i] <- theta.mat[j,i]*(school.id[i]==school.id[j])    
+    }
+  }
+  return(between.prob.mat[lower.tri(between.prob.mat)])
+}
+
+
+Edges_prob_by_school_and_gender <- function(theta.vec, A.sp, X){
+  # Function that generates cross-clusters edges with prob that depends on both school and gender
+  school <- X[[1]]
+  gender <- X[[2]]
+  N <- dim(A.sp)[1]
+  prob.mat <- matrix(NA, N, N) 
+  diag(prob.mat) <- 0
+  for (i in seq(N-1)) {
+    for (j in seq(i+1,N)) {
+      # P(A_ij=1 | A^sp_ij = 0) = I(school_i=school_j){theta[1] + theta[2]*(gender_i=gender_j)}
+      # P(A_ij=1 | A^sp_ij = 1) = 1
+      prob.mat[j,i] <- ifelse(A.sp[j,i] == 1,
+                              1,
+                              (school[i]==school[j])*(theta.vec[1] + theta.vec[2]*(gender[i]==gender[j])))
+    }
+  }
+  return(prob.mat)
+}
+
+N_clusters <- length(unique(kenya_df$Class))
+N_each_cluster_vec <- c(n.each.KDSS, n.each.MGSS)
+
+# Same theta
+# Uniform(0,0.005) prior
+# set.seed(62619)
+# PBA.same.theta.uniform.prior <- PBA_for_CRT(N_units = n,
+#                                 N_clusters = N_clusters,
+#                                 N_each_cluster_vec = N_each_cluster_vec,
+#                                 N_iterations = 1e3,
+#                                 prior_func = runif,
+#                                 prior_func_args = list(n=1,min=0,max=0.005),
+#                                 between_prob_func = Between_cluster_edges_prob,
+#                                 X.obs = rep(c("KDSS","MGSS"),each=12),
+#                                 Z.obs = kenya_df$Treatment,
+#                                 Y.obs = kenya_df$gad.diff, 
+#                                 Pz_function = Z_ber_clusters,
+#                                 pz_func_args = list(N_clusters = N_clusters,
+#                                                     N_each_cluster_vec = N_each_cluster_vec,
+#                                                     p = 0.5))
+# # Beta(0.25,20) prior
+# set.seed(62620)
+# PBA.same.theta.beta.prior <- PBA_for_CRT(N_units = n,
+#                                 N_clusters = N_clusters,
+#                                 N_each_cluster_vec = N_each_cluster_vec,
+#                                 N_iterations = 1e3,
+#                                 prior_func = rbeta,
+#                                 prior_func_args = list(n=1,shape1=0.25,shape2=25),
+#                                 between_prob_func = Between_cluster_edges_prob,
+#                                 X.obs = rep(c("KDSS","MGSS"),each=12),
+#                                 Z.obs = kenya_df$Treatment,
+#                                 Y.obs = kenya_df$gad.diff, 
+#                                 Pz_function = Z_ber_clusters,
+#                                 pz_func_args = list(N_clusters = N_clusters,
+#                                                     N_each_cluster_vec = N_each_cluster_vec,
+#                                                     p = 0.5))
+# 
+# prior_func_multi <- rep(list(runif), N_clusters*(N_clusters-1)/2)
+# prior_func_args_multi <- rep(list(list(n=1,min=0,max=0.005)), N_clusters*(N_clusters-1)/2)
+# 
+# PBA.different.theta.uniform.prior <- PBA_for_CRT(N_units = n,
+#                                         N_clusters = N_clusters,
+#                                         N_each_cluster_vec = N_each_cluster_vec,
+#                                         N_iterations = 1e3,
+#                                         prior_func = prior_func_multi,
+#                                         prior_func_args = prior_func_args_multi,
+#                                         between_prob_func = Between_cluster_edges_prob,
+#                                         X.obs = rep(c("KDSS","MGSS"),each=12),
+#                                         Z.obs = kenya_df$Treatment,
+#                                         Y.obs = kenya_df$gad.diff, 
+#                                         Pz_function = Z_ber_clusters,
+#                                         pz_func_args = list(N_clusters = N_clusters,
+#                                                             N_each_cluster_vec = N_each_cluster_vec,
+#                                                             p = 0.5))
+# 
+# # Different theta by school
+# 
+# # Uniform prior
+# prior_func_multi <- rep(list(runif), N_clusters*(N_clusters-1)/2)
+# prior_func_args_multi <- rep(list(list(n=1,min=0,max=0.005)), N_clusters*(N_clusters-1)/2)
+# 
+# set.seed(65130)
+# PBA.different.theta.uniform.prior <- PBA_for_CRT(N_units = n,
+#                                         N_clusters = N_clusters,
+#                                         N_each_cluster_vec = N_each_cluster_vec,
+#                                         N_iterations = 1e3,
+#                                         prior_func = prior_func_multi,
+#                                         prior_func_args = prior_func_args_multi,
+#                                         between_prob_func = Between_cluster_edges_prob,
+#                                         X.obs = rep(c("KDSS","MGSS"),each=12),
+#                                         Z.obs = kenya_df$Treatment,
+#                                         Y.obs = kenya_df$gad.diff, 
+#                                         Pz_function = Z_ber_clusters,
+#                                         pz_func_args = list(N_clusters = N_clusters,
+#                                                             N_each_cluster_vec = N_each_cluster_vec,
+#                                                             p = 0.5))
+# 
+# # Beta prior
+# prior_func_multi <- rep(list(rbeta), N_clusters*(N_clusters-1)/2)
+# prior_func_args_multi <- rep(list(list(n=1,shape1=0.25,shape2=25)), N_clusters*(N_clusters-1)/2)
+# 
+# set.seed(65131)
+# PBA.different.theta.beta.prior <- PBA_for_CRT(N_units = n,
+#                                         N_clusters = N_clusters,
+#                                         N_each_cluster_vec = N_each_cluster_vec,
+#                                         N_iterations = 1e3,
+#                                         prior_func = prior_func_multi,
+#                                         prior_func_args = prior_func_args_multi,
+#                                         between_prob_func = Between_cluster_edges_prob,
+#                                         X.obs = rep(c("KDSS","MGSS"),each=12),
+#                                         Z.obs = kenya_df$Treatment,
+#                                         Y.obs = kenya_df$gad.diff, 
+#                                         Pz_function = Z_ber_clusters,
+#                                         pz_func_args = list(N_clusters = N_clusters,
+#                                                             N_each_cluster_vec = N_each_cluster_vec,
+#                                                             p = 0.5))
+# 
+# 
+# # Base line Q is diag network (no cross clusters contamination)
+# Q.sp <- diag(1, N_clusters, N_clusters)
+# A.sp <- igraph::as_adjacency_matrix(igraph::sample_sbm(n = n,
+#                                                        pref.matrix = Q.sp,
+#                                                        block.sizes = N_each_cluster_vec,
+#                                                        directed = FALSE))
+# set.seed(651995)
+# PBA.theta.by.school.gender.uniform.prior <- PBA_general(N_units = n,
+#                                                       N_iterations = 2,
+#                                                       A.sp = A.sp,
+#                                                       edges_prob_func = Edges_prob_by_school_and_gender,
+#                                                       prior_func_list = rep(list(runif),2),
+#                                                       prior_func_args_list = list(list(n=1,min=0,max=0.003),
+#                                                                                   list(n=1,min=0,max=0.002)),
+#                                                       Z.obs = kenya_df$Treatment, 
+#                                                       Y.obs = kenya_df$gad.diff,
+#                                                       X.obs = list(school = kenya_df$School,
+#                                                                    gender = kenya_df$Gender), 
+#                                                       Pz_function = Z_ber_clusters,
+#                                                       pz_func_args = list(N_clusters = N_clusters,
+#                                                                           N_each_cluster_vec = N_each_cluster_vec,
+#                                                                           p = 0.5),
+#                                                       exposures_vec = c("c11","c00"),
+#                                                       exposures_contrast = list(c("c11","c00")))
+# 
+
+# PBA graphics ------------------------------------------------------------
+
+# Read files
+
+Same.theta.uniform.prior <- fread("Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_PBA_same_theta_uniform_prior.csv")
+Same.theta.uniform.prior[, scenario := "same.theta.uniform"]
+
+Same.theta.beta.prior <- fread("Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_PBA_same_theta_beta_prior.csv")
+Same.theta.beta.prior[, scenario := "same.theta.beta"]
+
+different.theta.uniform.prior <- fread("Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_PBA_different_theta_uniform_prior.csv")
+different.theta.uniform.prior[, scenario := "different.theta.uniform"]
+
+different.theta.beta.prior <- fread("Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_PBA_different_theta_beta_prior.csv")
+different.theta.beta.prior[, scenario := "different.theta.beta"]
+
+By.school.gender.uniform <- fread("Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_PBA_theta_by_school_gender_uniform_prior.csv")
+By.school.gender.uniform[, scenario := "by.school.gender"]
+
+# combine all
+PBA.combined <- rbindlist(list(Same.theta.uniform.prior,
+                               Same.theta.beta.prior,
+                               different.theta.uniform.prior,
+                               different.theta.beta.prior, 
+                               By.school.gender.uniform))
+
+
+PBA.combined <- melt.data.table(PBA.combined,
+                                id.vars = c("iter","scenario"),
+                                measure.vars = c("ht_ce","hajek_ce","ht_ce_w_re","hajek_ce_w_re"),
+                                variable.name = "estimator")
+
+ggplot(PBA.combined[estimator == "hajek_ce",], aes(x=value)) + 
+  geom_histogram() +
+  facet_wrap(~scenario, nrow = 1, scales = "free")
+
+ggplot(PBA.combined[estimator == "hajek_ce_w_re",], aes(x=value)) + 
+  geom_histogram() +
+  facet_wrap(~scenario, nrow = 1, scales = "free")
+
+
+# compute summary
+PBA.summarized <- PBA.combined[,.(mean.esti = mean(value, na.rm=T),
+                                  median.esti = median(value, na.rm=T),
+                                  q025.esti = quantile(value, 0.025, na.rm=T),
+                                  q975.esti = quantile(value, 0.975, na.rm=T)),
+                               by = c("scenario","estimator")]
+
+PBA.summarized[, with_re := ifelse(grepl("_w_re", PBA.summarized$estimator, fixed=T),"Yes","No")]
+PBA.summarized[, estimator.type := ifelse(grepl("ht", PBA.summarized$estimator, fixed=T),"HT","Hajek")]
+
+# add null results
+PBA.summarized <- rbindlist(list(PBA.summarized,
+                                 data.table(scenario = "null",
+                                            estimator = "null",
+                                            mean.esti = null.ATE.GAD,
+                                            median.esti = NA,
+                                            q025.esti = null.gad.ci.low,
+                                            q975.esti = null.gad.ci.high,
+                                            with_re = "null",
+                                            estimator.type = "null")))
+# Graphics
+
+PBA.summarized$scenario <- factor(PBA.summarized$scenario, 
+                                   levels = c("null",
+                                              "same.theta.uniform",
+                                              "same.theta.beta",
+                                              "different.theta.uniform",
+                                              "different.theta.beta",
+                                              "by.school.gender"),
+                                   labels = c("Baseline",
+                                              "(I) & Uniform",
+                                              "(I) & Beta",
+                                              "(II) & Uniform",
+                                              "(II) & Beta",
+                                              "(III)"))
+
+PBA.summarized$width <- ifelse(PBA.summarized$scenario == "Baseline", 0.15,0.3)
+
+PBA.CI.figure <- ggplot(PBA.summarized[estimator.type %in% c("Hajek","null"),],
+                        aes(x=scenario, color = with_re, group = with_re)) +
+                  geom_errorbar(aes(ymin=q025.esti,
+                                    ymax=q975.esti,
+                                    width = width),
+                                linewidth = 4,
+                                alpha = 0.9,
+                                position = position_dodge(0.4),
+                                # width = 0.2,
+                                show.legend = F) +
+                  geom_point(aes(y=mean.esti),
+                             size = 12,
+                             alpha = .95,
+                             position = position_dodge(0.4),
+                             show.legend = F) +
+                  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.3, linewidth = .8) +
+                  scale_y_continuous(breaks = seq(-5,4,1)) +
+                  scale_color_manual(values = c("null" = "#1D8A99","No" = "grey45","Yes"="grey25")) +
+                  labs(x = "", y = "") +
+                  theme_pubclean() +
+                  theme(axis.text.x = element_text(size =32, face = "bold"),
+                        axis.text.y = element_text(size =26, face = "bold"), 
+                        axis.ticks.x = element_blank())
+
+ggsave(filename = "Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_CRT_PBA_CI_figure.jpeg",
+       plot = PBA.CI.figure,
+       width = 20,
+       height = 10)
+
+
 
 # Function that run SA
 kenya_school_SA <- function(Z.obs,
