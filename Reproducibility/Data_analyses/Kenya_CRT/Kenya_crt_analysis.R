@@ -11,6 +11,8 @@ library(ggplot2)
 library(ggpubr)
 library(latex2exp)
 library(ggtext)
+library(kableExtra)
+
 
 source("Reproducibility/Estimation_functions.R")
 
@@ -101,13 +103,42 @@ paste0("PHQ effect estimate [CI] is ", round(null.ATE.phq,3),
 kenya_df <- fread("Reproducibility/Data_analyses/Kenya_CRT/school.df.csv")
 
 # Order by Class, School
-setorderv(school.relevant.only, c("Class","School"))
+setorderv(kenya_df, c("Class","School"))
 
-school.names <- unique(school.relevant.only$School) # "KDSS" "MGSS"
+school.names <- unique(kenya_df$School) # "KDSS" "MGSS"
 
-n.each.KDSS <- c(table(school.relevant.only[School == "KDSS", Class]))
-n.each.MGSS <- c(table(school.relevant.only[School == "MGSS", Class]))
+n.each.KDSS <- c(table(kenya_df[School == "KDSS", Class]))
+n.each.MGSS <- c(table(kenya_df[School == "MGSS", Class]))
 
+N_clusters <- length(unique(kenya_df$Class))
+N_each_cluster_vec <- c(n.each.KDSS, n.each.MGSS)
+
+# Baseline GAD estimate tau(c11,c00)
+
+baseline.cluster.net <- generate_clusters_contamination(N_units = n,
+                                                        N_clusters = N_clusters,
+                                                        N_each_cluster_vec = N_each_cluster_vec,
+                                                        within_prob_vec = 1,
+                                                        between_prob_vec = 0)
+set.seed(151502)
+baseline.GAD.estimate <- NMR_estimator(A.list = list(A=baseline.cluster.net),
+                                       Z.obs = kenya_df$Treatment,
+                                       Y.obs = kenya_df$gad.diff,
+                                       Pz_function = Z_ber_clusters,
+                                       pz_func_args = list(N_clusters = N_clusters,
+                                                           N_each_cluster_vec = N_each_cluster_vec,
+                                                           p = 0.5),
+                                       exposures_vec = c("c11","c00"),
+                                       exposures_contrast = list(c("c11","c00")),
+                                       exposure_func = generate_exposures_threshold,
+                                       exposure_func_args = list(threshold = rep(0,n)))
+
+baseline.hajek <- round(baseline.GAD.estimate$hajek_ce,3)
+# CI via normal approximation and conservative variance estimator
+baseline.se.times.quantile <- round(sqrt(baseline.GAD.estimate$var_hajek_ce)*1.96,3)
+baseline.point.ci <- paste0(baseline.hajek," [",
+                            baseline.hajek - baseline.se.times.quantile,
+                            ", ", baseline.hajek + baseline.se.times.quantile,"]")
 
 # PBA aux functions
 
@@ -148,9 +179,6 @@ Edges_prob_by_school_and_gender <- function(theta.vec, A.sp, X){
   return(prob.mat)
 }
 
-N_clusters <- length(unique(kenya_df$Class))
-N_each_cluster_vec <- c(n.each.KDSS, n.each.MGSS)
-
 # Same theta
 # Uniform(0,0.005) prior
 set.seed(62619)
@@ -168,7 +196,7 @@ PBA.same.theta.uniform.prior <- PBA_for_CRT(N_units = n,
                                 pz_func_args = list(N_clusters = N_clusters,
                                                     N_each_cluster_vec = N_each_cluster_vec,
                                                     p = 0.5))
-# Beta(0.25,20) prior
+# # Beta(0.25,20) prior
 set.seed(62620)
 PBA.same.theta.beta.prior <- PBA_for_CRT(N_units = n,
                                 N_clusters = N_clusters,
@@ -326,12 +354,16 @@ PBA.summarized[, estimator.type := ifelse(grepl("ht", PBA.summarized$estimator, 
 PBA.summarized <- rbindlist(list(PBA.summarized,
                                  data.table(scenario = "null",
                                             estimator = "null",
-                                            mean.esti = null.ATE.GAD,
+                                            # mean.esti = null.ATE.GAD,
+                                            mean.esti = baseline.hajek,
                                             median.esti = NA,
-                                            q025.esti = null.gad.ci.low,
-                                            q975.esti = null.gad.ci.high,
+                                            q025.esti = baseline.hajek - baseline.se.times.quantile,
+                                            q975.esti = baseline.hajek + baseline.se.times.quantile,
                                             with_re = "null",
                                             estimator.type = "null")))
+
+PBA.summarized[,interval.length := q975.esti - q025.esti]
+
 # Graphics
 
 PBA.summarized$scenario <- factor(PBA.summarized$scenario, 
@@ -378,4 +410,19 @@ ggsave(filename = "Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_CRT
        plot = PBA.CI.figure,
        width = 20,
        height = 10)
+
+PBA.summarized[,point.and.CI := paste0(round(mean.esti,3),
+                                      " [",round(q025.esti,3),", ",
+                                      round(q975.esti,3),"]")]
+
+PBA.summarized[with_re == "null", with_re := "Yes"]
+
+PBA.summarized.casted <- dcast.data.table(PBA.summarized[estimator.type %in% c("Hajek","null")],
+                          formula = "scenario ~ with_re", value.var = "point.and.CI")
+
+kable(PBA.summarized.casted, format = "latex", booktabs=T,
+              # col.names = c("Scenario","Without random error","With random error")) 
+              col.names = c("Scenario","No","Yes")) %>%
+              add_header_above(c(" " = 1, "Random error" = 2))
+
 
