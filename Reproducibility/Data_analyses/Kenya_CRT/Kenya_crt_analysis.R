@@ -380,14 +380,14 @@ PBA.summarized$scenario <- factor(PBA.summarized$scenario,
                                               "(II) & Beta",
                                               "(III)"))
 
-PBA.summarized$width <- ifelse(PBA.summarized$scenario == "Baseline", 0.15,0.3)
+PBA.summarized$width <- ifelse(PBA.summarized$scenario == "Baseline", 0.2,0.4)
 
 PBA.CI.figure <- ggplot(PBA.summarized[estimator.type %in% c("Hajek","null"),],
                         aes(x=scenario, color = with_re, group = with_re)) +
                   geom_errorbar(aes(ymin=q025.esti,
                                     ymax=q975.esti,
                                     width = width),
-                                linewidth = 4,
+                                linewidth = 3,
                                 alpha = 0.9,
                                 position = position_dodge(0.4),
                                 # width = 0.2,
@@ -397,19 +397,21 @@ PBA.CI.figure <- ggplot(PBA.summarized[estimator.type %in% c("Hajek","null"),],
                              alpha = .95,
                              position = position_dodge(0.4),
                              show.legend = F) +
-                  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.3, linewidth = .8) +
+                  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.35, linewidth = .8) +
                   scale_y_continuous(breaks = seq(-5,4,1)) +
                   scale_color_manual(values = c("null" = "#1D8A99","No" = "grey45","Yes"="grey25")) +
-                  labs(x = "", y = "") +
-                  theme_pubclean() +
-                  theme(axis.text.x = element_text(size =32, face = "bold"),
-                        axis.text.y = element_text(size =26, face = "bold"), 
-                        axis.ticks.x = element_blank())
+                  labs(x = "", y = "") + 
+                  # theme_pubclean() +
+                  theme_pubr() +
+                  coord_flip() +
+                  theme(axis.text.x = element_text(size =28, face = "bold"),
+                        axis.text.y = element_text(size =32, face = "bold"), 
+                        axis.ticks.y = element_blank())
 
 ggsave(filename = "Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_CRT_PBA_CI_figure.jpeg",
        plot = PBA.CI.figure,
        width = 20,
-       height = 10)
+       height = 12)
 
 PBA.summarized[,point.and.CI := paste0(round(mean.esti,3),
                                       " [",round(q025.esti,3),", ",

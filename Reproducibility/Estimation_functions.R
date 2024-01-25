@@ -1483,14 +1483,7 @@ Single_PBA_general_iteration <- function(N_units,
                                      exposures_vec = exposures_vec,
                                      threshold = exposures_thresholds)
   
-  # Estimate causal effects
-  # cur.CE.estimates <- rbindlist(MR_CE_estimator(Z.obs = Z.obs,
-  #                                          Y.obs = Y.obs,
-  #                                          A.list = list(cur.A.star),
-  #                                          exposures_contrast = exposures_contrast,
-  #                                          exposures_vec = exposures_vec,
-  #                                          Prob_matrices_list = prob.mat,
-  #                                          threshold = exposures_thresholds))
+
   cur.CE.estimates <- MR_CE_estimator(Z.obs = Z.obs,
                                            Y.obs = Y.obs,
                                            A.list = list(cur.A.star),
@@ -1500,31 +1493,6 @@ Single_PBA_general_iteration <- function(N_units,
                                            threshold = exposures_thresholds)
   
   cur.CE.estimates <- data.table(do.call(rbind,cur.CE.estimates))
-  
-  
-  # Update results DT
-  # CE.estimate <- NMR_estimator(A.list = list(A=cur.network),
-  #                              Z.obs = Z.obs,
-  #                              Y.obs = Y.obs,
-  #                              Pz_function = Pz_function,
-  #                              pz_func_args = pz_func_args,
-  #                              exposures_vec = c("c11","c00"),
-  #                              exposures_contrast = list(c("c11","c00")),
-  #                              exposure_func = generate_exposures_threshold,
-  #                              exposure_func_args = list(threshold = rep(0,N_units)))
-  
-
-    # Estimate causal effects
-  
-  # cur.CE.estimates <- NMR_estimator(A.list = list(A=cur.A.star),
-  #                                   Z.obs = Z.obs,
-  #                                   Y.obs = Y.obs,
-  #                                   Pz_function = Pz_function,
-  #                                   pz_func_args = pz_func_args,
-  #                                   exposures_vec = exposures_vec,
-  #                                   exposures_contrast = exposures_contrast,
-  #                                   exposure_func = generate_exposures_threshold,
-  #                                   exposure_func_args = list(threshold = exposures_thresholds))
   
   # Add random error via normal approximation
   cur.CE.estimates$ht_ce_w_re <- mapply(rnorm,
@@ -1536,7 +1504,7 @@ Single_PBA_general_iteration <- function(N_units,
                                         n=1,
                                         mean=cur.CE.estimates$hajek_ce,
                                         sd=sqrt(cur.CE.estimates$var_hajek_ce))
-  # 
+  
   cur.CE.estimates$ce_contrast <- sapply(exposures_contrast, function(x){paste0(x[1],"-",x[2])})
   
   return(cur.CE.estimates)
