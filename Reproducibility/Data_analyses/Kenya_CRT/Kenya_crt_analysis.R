@@ -299,6 +299,34 @@ PBA.theta.by.school.gender.uniform.prior <- PBA_general(N_units = n,
                                                       exposures_vec = c("c11","c00"),
                                                       exposures_contrast = list(c("c11","c00")))
 
+# Point mass theta distribution
+
+theta_grid <- seq(0.0005,0.005,0.0005)
+
+set.seed(62619)
+for (i in seq(length(theta_grid))){
+  Kenya.PBA <- PBA_for_CRT(N_units = n,
+                           N_clusters = N_clusters,
+                           N_each_cluster_vec = N_each_cluster_vec,
+                           N_iterations = 200,
+                           prior_func = sample,
+                           prior_func_args = list(x=theta_grid[i],p=1),
+                           between_prob_func = Between_cluster_edges_prob,
+                           X.obs = rep(c("KDSS","MGSS"),each=12),
+                           Z.obs = kenya_df$Treatment,
+                           Y.obs = kenya_df$gad.diff, 
+                           Pz_function = Z_ber_clusters,
+                           pz_func_args = list(N_clusters = N_clusters,
+                                               N_each_cluster_vec = N_each_cluster_vec,
+                                               p = 0.5))
+  write.csv(x = Kenya.PBA,
+            file = paste0("Reproducibility/Data_analyses/Kenya_CRT/PBA_results/pointmass/PBA_results/Kenya_PBA_same_theta_point_mass_theta", i, ".csv"),
+            row.names = FALSE)
+}
+
+
+
+
 
 # PBA graphics ------------------------------------------------------------
 
@@ -426,5 +454,65 @@ kable(PBA.summarized.casted, format = "latex", booktabs=T,
               # col.names = c("Scenario","Without random error","With random error")) 
               col.names = c("Scenario","No","Yes")) %>%
               add_header_above(c(" " = 1, "Random error" = 2))
+
+###
+# Point mass \theta grid plots
+###
+
+# Merge to one CSV file
+
+# csv_names <- dir("Reproducibility/Data_analyses/Kenya_CRT/PBA_results/pointmass/")
+# csv_names <- csv_names[c(1,seq(3,10),2)]
+# path_name <- "Reproducibility/Data_analyses/Kenya_CRT/PBA_results/pointmass/"
+# 
+# theta_grid <- seq(0.0005,0.005,0.0005)
+# theta_grid_perc <- paste0(round(theta_grid*100,2),"%")
+# 
+# combined_dt <- data.table()
+# 
+# for (i in seq(length(csv_names))) {
+# 
+#   curr_dt <- fread(paste0(path_name,csv_names[i]))
+#   curr_dt[,param := theta_grid_perc[i]]
+# 
+#   combined_dt <- rbindlist(list(combined_dt,curr_dt))
+# }
+# 
+# 
+# write.csv(combined_dt,
+#           "Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_PBA_same_theta_point_mass.csv",
+#           row.names = FALSE)
+# 
+
+# Plot
+
+PBA.point.mass.theta <- fread("Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_PBA_same_theta_point_mass.csv")
+
+PBA.point.mass.theta.melt <- melt.data.table(PBA.point.mass.theta,
+                                             id.vars = c("iter","param"),
+                                             measure.vars = c("hajek_ce","hajek_ce_w_re"))
+
+
+PBA.point.mass.boxplot <- ggplot(PBA.point.mass.theta.melt[variable=="hajek_ce",],
+                                     aes(x=param, y=value)) +
+                                geom_boxplot(fill = "grey45", alpha=0.7) +
+                                geom_hline(yintercept = -0.658,
+                                           color = "#1D8A99",
+                                           linewidth = 1) + # Baseline point estimate 
+                                labs(x=TeX("$\\theta$"),y="") +
+                                scale_y_continuous(breaks = seq(-2.5,1,0.5)) +
+                                theme_pubclean() +
+                                theme(axis.text.x = element_text(size =28, face = "bold"),
+                                      axis.text.y = element_text(size =26, face = "bold"),
+                                      axis.title.x = element_text(size=38))
+
+ggsave(filename = "Reproducibility/Data_analyses/Kenya_CRT/PBA_results/Kenya_CRT_PBA_pointmass_boxplot.jpeg",
+       plot = PBA.point.mass.boxplot,
+       width = 20,
+       height = 12)
+
+
+
+
 
 
