@@ -432,7 +432,7 @@ PBA.CI.figure <- ggplot(PBA.summarized[estimator.type %in% c("Hajek","null"),],
                   # theme_pubclean() +
                   theme_pubr() +
                   coord_flip() +
-                  theme(axis.text.x = element_text(size =28, face = "bold"),
+                  theme(axis.text.x = element_text(size =32, face = "bold"),
                         axis.text.y = element_text(size =32, face = "bold"), 
                         axis.ticks.y = element_blank())
 
