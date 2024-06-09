@@ -94,16 +94,21 @@ PA.noise.plot.some <- ggplot(PA.noise.summarized[variable %in% c("ht_ce","hajek_
   #            labeller = labeller(ce_contrast = c("c10-c00"="Direct effect"))) +
   guides(fill = guide_legend(override.aes = list(size = 12))) +
   theme_pubclean() +
-  theme(axis.text.x = element_text(size =26, face = "bold"),
-        axis.text.y = element_text(size =26, face = "bold"),
+  theme(axis.text.x = element_text(size =24, face = "bold", angle = 30),
+        axis.text.y = element_text(size =24, face = "bold"),
         axis.title.x = element_text(size = 44, face = "bold"),
         axis.title.y = element_text(size = 26, face="bold"),
         strip.background = element_blank(),
         strip.text = element_text(size=28, face = "bold"),
-        # legend.position = "top",
-        legend.position = "none",
+        legend.position = "bottom",
+        # legend.position = "none",
+        legend.title = element_blank(),
+        legend.text = element_text(size=28, face="bold"),
+        legend.key.size = unit(1, "cm"),  # Increase key (symbol) size
+        legend.box.spacing = unit(0.3, "cm"),  # Adjust the box spacing
+        # legend.background = element_blank(),  # Remove the background
+        legend.background = element_rect(fill = "white"),  # Remove the background
         # legend.position = c(0.5,0.1),
-        # legend.title = element_blank(),
         # legend.text = element_text(size = 24, face = "bold"),
         # legend.key.size = unit(1.2,"cm"),
         plot.title = element_text(size = 36, face = "bold", hjust = .5, vjust = -0.5),
@@ -471,8 +476,8 @@ PA.censor.plot.some <- ggplot(PA.censor.summarized[variable %in% c("ht_ce","haje
   #            labeller = labeller(ce_contrast = c("c10-c00"="Direct effect"))) +
   guides(fill = guide_legend(override.aes = list(size = 10))) +
   theme_pubclean() +
-  theme(axis.text.x = element_text(size =26, face = "bold"),
-        axis.text.y = element_text(size =26, face = "bold"),
+  theme(axis.text.x = element_text(size =24, face = "bold"),
+        axis.text.y = element_text(size =24, face = "bold"),
         # axis.text.y = element_blank(),
         axis.title.x = element_text(size = 30, face = "bold"),
         axis.title.y = element_text(size = 26, face="bold"),
@@ -481,8 +486,14 @@ PA.censor.plot.some <- ggplot(PA.censor.summarized[variable %in% c("ht_ce","haje
         # axis.ticks.y = element_blank(),
         strip.background = element_blank(),
         strip.text = element_text(size=28, face = "bold"),
-        # legend.position = "top",
-        legend.position = "none",
+        legend.position = "bottom",
+        # legend.position = "none",
+        legend.title = element_blank(),
+        legend.text = element_text(size=28, face="bold"),
+        legend.key.size = unit(1, "cm"),  # Increase key (symbol) size
+        legend.box.spacing = unit(0.3, "cm"),  # Adjust the box spacing
+        # legend.background = element_blank(),  # Remove the background
+        legend.background = element_rect(fill = "white"),  # Remove the background
         # legend.position = c(0.5,0.1),
         # legend.title = element_blank(),
         # legend.text = element_text(size = 24, face = "bold"),
@@ -495,10 +506,16 @@ PA.censor.plot.some <- ggplot(PA.censor.summarized[variable %in% c("ht_ce","haje
 plot.noise.censored.combined <- ggarrange(PA.noise.plot.some,PA.censor.plot.some,
                                 ncol = 2, nrow = 1, align = "h",
                                 # widths = c(1.57,1)
-                                widths = c(1.5,1)
+                                widths = c(1.25,1),
                                 # widths = c(1.75,1)
-                                # common.legend = TRUE, legend = "top"
+                                common.legend = TRUE, legend = "bottom"
                                 )
+
+ggsave(filename = "Reproducibility/Simulations/graphics/main/Bias_noise_censor_combined.jpeg",
+       plot = plot.noise.censored.combined, 
+       dpi = 500,
+       width = 18, height = 10)
+
 
 # Appendix plots
 
