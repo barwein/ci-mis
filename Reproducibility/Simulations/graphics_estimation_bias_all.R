@@ -856,7 +856,8 @@ bias_cluster_plot <-
   scale_fill_manual(values = c("Fixed" = "#009933", "Varied" = "#660033")) +
   scale_shape_manual(values = c("Fixed" = 15,"Varied" = 17)) +
   # labs(x=TeX("$\\gamma$"), y="Bias (%)", title = "(III)") +
-  labs(x=TeX("$\\gamma$"), y="Abs. bias", title = "(III)") +
+  # labs(x=TeX("$\\gamma$"), y="Abs. bias", title = "(III)") +
+  labs(x=TeX("$\\gamma$"), y="Abs. bias") +
   guides(fill = guide_legend(override.aes = list(size = 12))) +
   theme_pubclean() +
   theme(axis.text.x = element_text(size =26, face = "bold"),
@@ -867,12 +868,12 @@ bias_cluster_plot <-
         # axis.title.y = element_blank(),
         strip.background = element_blank(),
         strip.text = element_text(size=26, face = "bold"),
-        # legend.position = "top",
+        legend.position = "top",
         # legend.position = c(0.1,0.9),
-        legend.position = "none",
+        # legend.position = "none",
         # legend.direction = "horziontal",
-        # legend.title = element_blank(),
-        # legend.text = element_text(size = 22, face = "bold"),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 28, face = "bold"),
         # legend.key.size = unit(1.2,"cm"),
         plot.title = element_text(size = 36, face = "bold", hjust = .5, vjust = -0.5))
 
@@ -903,10 +904,13 @@ plot.contamination.legend <- ggarrange(bias_cluster_plot, legend.plot,
 
 plot.all.combined <- ggarrange(plot.noise.censored.combined, plot.contamination.legend,
                                nrow = 2)
-
-ggsave(filename = "Reproducibility/Simulations/graphics/Main/Bias_plot_all_scenarios_combined_1000iter.jpeg",
-       plot = plot.all.combined, 
-       width = 20, height = 12)
+# 
+# ggsave(filename = "Reproducibility/Simulations/graphics/Main/Bias_plot_all_scenarios_combined_1000iter.jpeg",
+#        plot = plot.all.combined,
+#        width = 20, height = 12)
+ggsave(filename = "Reproducibility/Simulations/graphics/Appendix/Bias_cross_clusters_contamination.jpeg",
+       plot = bias_cluster_plot,
+       width = 16, height = 8)
 
 
 
