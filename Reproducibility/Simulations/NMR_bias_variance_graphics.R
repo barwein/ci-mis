@@ -141,6 +141,7 @@ p.hajek.both <- ggarrange(p.hajek.bias,p.hajek.sd,p.hajek.rmse,
 
 ggsave("Reproducibility/Simulations/graphics/Main/MR_bias_var_PA_n3000_eta025_c11_c10.jpeg",
        p.hajek.both,
+       dpi = 700,
        width = 20, height = 10)
 
 
