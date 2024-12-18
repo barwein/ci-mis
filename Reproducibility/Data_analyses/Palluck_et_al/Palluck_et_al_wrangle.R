@@ -340,8 +340,8 @@ prob.mat.adj.all <- Get_prob_matrices_list(R = 10^4,
 
 # Estimate causal effects -------------------------------------------------
 
-prob.mat <- readRDS("Simulations/data_analysis/Palluck_et_al/prob_mat_list.RDS")
-prob.mat.BFs <- readRDS("Simulations/data_analysis/Palluck_et_al/prob_mat_BF1.and.BF2.RDS")
+prob.mat <- readRDS("Reproducibility/Data_analyses/Palluck_et_al/prob_mat_list.RDS")
+prob.mat.BFs <- readRDS("Reproducibility/Data_analyses/Palluck_et_al/prob_mat_BF1.and.BF2.RDS")
 
 z.obs <- TREAT.NUMERIC
 z.obs[z.obs==2] <- 0
@@ -535,6 +535,10 @@ kable(x = casted.results[network_order,c(1,2,4,3,5)],
       add_header_above(c(" " = 1, "one" = 2,
                          "two" = 2))
 
+network_order_plot <- c("ST","BF","ST.and.BF", "All")
+
+network_labels_plot <- c("ST (pre)","BF (pre)","ST & BF (pre)", "ALL")
+
 ht.results <- palluck.et.al.results[,.SD,.SDcols = c("ht_ce","var_ht_ce","estimand","adj.mat")]
 ht.results[, method := "HT"]
 
@@ -549,37 +553,49 @@ library(ggpubr)
 library(latex2exp)
 
 
-ggplot(melted.results[estimand%in%c("c101-c000","c001-c000")],
-       aes(x=factor(adj.mat,levels = network_order,
-                    labels = network_labels),
+# ggplot(melted.results[estimand%in%c("c101-c000","c001-c000")],
+ggplot(melted.results[method == "Hajek" & 
+                        adj.mat %in% c("ST","BF","ST.and.BF", "All") &
+                        estimand %in% c("c011-c000","c111-c000")],
+       aes(x=factor(adj.mat,levels = rev(network_order_plot),
+                    labels = rev(network_labels_plot)),
                            y = ht_ce,
            col = method,
            group = method,
            shape = method)) +
   geom_errorbar(aes(ymin = ht_ce - 1.96*sqrt(var_ht_ce),
                     ymax = ht_ce + 1.96*sqrt(var_ht_ce)),
-                width = 0, position = position_dodge(0.3),
-                linewidth =1, alpha = 0.7) +
+                width = .4, position = position_dodge(0.3),
+                linewidth =1.1, alpha = 0.7) +
   geom_point(position = position_dodge(0.3),
              cex = 8) +
   geom_hline(yintercept = 0, lty = "dashed",
              alpha = 0.6, linewidth = 1) +
-  scale_color_manual(values = c("HT" = "#990000","Hajek" = "#0065A9")) +
-  scale_shape_manual(values = c("HT" = 16,"Hajek" = 18)) +
+  # scale_color_manual(values = c("HT" = "#990000","Hajek" = "#0065A9")) +
+  scale_color_manual(values = c("Hajek" = "#0065A9")) +
+  # scale_shape_manual(values = c("HT" = 16,"Hajek" = 18)) +
   labs(x="", y="") +
   scale_y_continuous(breaks = seq(-1,1,0.25),labels = seq(-1,1,0.25)) +
-  # coord_flip() +
-  facet_wrap(~estimand, nrow = 2,
-             labeller = labeller(estimand = c("c001-c000" = "School Effect",
-                                   "c101-c000" = "Direct Isolated Effect"))) +
+  coord_flip() +
+  facet_wrap(~estimand, nrow = 1
+             ,
+             labeller = labeller(estimand = c("c111-c000" = "Overall Effect",
+                                   "c011-c000" = "Indirect Effect"))
+             ) +
   theme_pubclean() +
   theme(legend.title = element_blank(),
-        axis.text.y = element_text(face = "bold", size = 14),
+        axis.text.y = element_text(face = "bold", size = 22),
         axis.text.x = element_text(size = 18, face = "bold"),
-        legend.text = element_text(face = "bold", size = 16),
-        strip.text = element_text(face = "bold", size = 18),
-        legend.key.size = unit(1,"cm"))
+        # legend.text = element_text(face = "bold", size = 16),
+        strip.text = element_text(face = "bold", size = 20),
+        # legend.key.size = unit(1,"cm"),
+        legend.position = "none",
+        )
 
+
+# Save figure
+ggsave("Reproducibility/Data_analyses/Palluck_et_al/figures/Paluck_hajek_results.jpeg",
+       width = 12, height = 6, units = "in")
 
 # Appendix results --------------------------------------------------------
 
@@ -591,10 +607,12 @@ ggplot(melted.results[estimand%in%c("c101-c000","c001-c000")],
 #                               " adj.mat ~ estimand", value.var = "ht_point_se")
 
 hajek.casted.apdx <- dcast.data.table(palluck.et.al.results,
-                                 " adj.mat ~ estimand", value.var = "hajek_point_se")
+                                 # " adj.mat ~ estimand", value.var = "hajek_point_se")
+                                 " adj.mat ~ estimand", value.var = "hajek_point_ci")
 
 ht.casted.apdx <- dcast.data.table(palluck.et.al.results,
-                              " adj.mat ~ estimand", value.var = "ht_point_se")
+                              # " adj.mat ~ estimand", value.var = "ht_point_se")
+                              " adj.mat ~ estimand", value.var = "ht_point_ci")
 
 casted.results.apdx <- cbind(ht.casted.apdx,hajek.casted.apdx[,2:5])
 
